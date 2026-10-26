@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/models/expense.dart';
 import '../../core/storage/app_store.dart';
 import '../../core/utils/format.dart';
+import '../assistant/assistant_page.dart';
 import '../expense/expense_page.dart';
 import '../games/games_hub_page.dart';
 import '../memo/memo_list_page.dart';
@@ -41,8 +42,15 @@ class HomePage extends StatelessWidget {
               childAspectRatio: 1.35,
               children: [
                 _FeatureCard(
-                  icon: Icons.note_alt_outlined,
+                  icon: Icons.smart_toy_outlined,
                   color: scheme.primary,
+                  title: 'AI 助手',
+                  subtitle: '说句话，帮你记账查备忘',
+                  onTap: () => _open(context, AssistantPage(app: store)),
+                ),
+                _FeatureCard(
+                  icon: Icons.note_alt_outlined,
+                  color: scheme.secondary,
                   title: '备忘录',
                   subtitle: '随手记，随时查',
                   onTap: () => _open(context, MemoListPage(store: store)),

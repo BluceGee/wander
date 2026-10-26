@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../agent/llm_client.dart';
 import '../models/expense.dart';
 import '../models/memo.dart';
 
@@ -20,10 +21,14 @@ class AppStore extends ChangeNotifier {
   static const _kMemos = 'memos';
   static const _kExpenses = 'expenses';
   static const _kThemeMode = 'themeMode';
+  static const _kLlmBaseUrl = 'llmBaseUrl';
+  static const _kLlmApiKey = 'llmApiKey';
+  static const _kLlmModel = 'llmModel';
 
   List<Memo> _memos = [];
   List<ExpenseRecord> _expenses = [];
   ThemeMode _themeMode = ThemeMode.system;
+  LlmConfig _llmConfig = LlmConfig.empty;
 
   /// 备忘录（置顶优先，其次按更新时间倒序）。
   List<Memo> get memos {
@@ -43,6 +48,25 @@ class AppStore extends ChangeNotifier {
   }
 
   ThemeMode get themeMode => _themeMode;
+
+  /// AI 助手的 LLM 接入配置（OpenAI 兼容，如 MiMo 平台）。
+  LlmConfig get llmConfig => _llmConfig;
+
+  Future<void> setLlmConfig({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+  }) async {
+    _llmConfig = LlmConfig(
+      baseUrl: baseUrl.trim(),
+      apiKey: apiKey.trim(),
+      model: model.trim(),
+    );
+    await _prefs.setString(_kLlmBaseUrl, _llmConfig.baseUrl);
+    await _prefs.setString(_kLlmApiKey, _llmConfig.apiKey);
+    await _prefs.setString(_kLlmModel, _llmConfig.model);
+    notifyListeners();
+  }
 
   /// 读取指定月份的账单（默认本月）。
   List<ExpenseRecord> expensesOfMonth(DateTime month) {
@@ -68,6 +92,11 @@ class AppStore extends ChangeNotifier {
     _themeMode = ThemeMode.values.firstWhere(
       (e) => e.name == mode,
       orElse: () => ThemeMode.system,
+    );
+    _llmConfig = LlmConfig(
+      baseUrl: _prefs.getString(_kLlmBaseUrl) ?? '',
+      apiKey: _prefs.getString(_kLlmApiKey) ?? '',
+      model: _prefs.getString(_kLlmModel) ?? '',
     );
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/storage/app_store.dart';
+import 'llm_settings_page.dart';
 
 /// 设置：外观、数据管理、关于。
 class SettingsPage extends StatelessWidget {
@@ -56,6 +57,25 @@ class SettingsPage extends StatelessWidget {
                   title: const Text('清空全部数据'),
                   subtitle: const Text('删除所有备忘录与账单，不可恢复'),
                   onTap: () => _confirmClear(context),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text('AI 助手', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 8),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.smart_toy_outlined),
+                  title: const Text('LLM 接口配置'),
+                  subtitle: Text(
+                    store.llmConfig.isConfigured
+                        ? '已配置：${store.llmConfig.model}'
+                        : '未配置',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => LlmSettingsPage(store: store)),
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
