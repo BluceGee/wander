@@ -1,0 +1,25 @@
+name: xnl
+description: "XNL 工具箱 —— 备忘录、记账、小游戏合集"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  # 本地键值存储：备忘录、账单、设置均以 JSON 存放于此
+  shared_preferences: ^2.3.0
+  # 日期与金额格式化
+  intl: ^0.20.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
