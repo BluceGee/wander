@@ -6,6 +6,7 @@ import 'package:xnl/app.dart';
 import 'package:xnl/core/models/expense.dart';
 import 'package:xnl/core/models/memo.dart';
 import 'package:xnl/core/storage/app_store.dart';
+import 'package:xnl/core/storage/key_vault.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -15,7 +16,7 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
-    store = AppStore(prefs);
+    store = await AppStore.create(prefs, vault: InMemoryKeyVault());
   });
 
   test('备忘录增删改查', () async {

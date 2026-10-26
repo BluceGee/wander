@@ -17,7 +17,7 @@
 
 - Flutter 3.47.8（stable）
 - Dart 3.13.7
-- minSdk 21，目标 Android（小米 / Redmi 等机型均可安装）
+- minSdk 24，目标 Android（小米 / Redmi 等机型均可安装）
 
 ## 快速开始
 
@@ -68,8 +68,11 @@ lib/features/assistant/   应用层
   直到模型给出最终文本；`maxRounds` 防失控。
 - **写操作确认**：`ToolSpec.requiresConfirmation` 的工具（记一笔、建/删备忘录）
   弹窗经用户确认才执行，拒绝会以 `is_error` 告知模型。
-- **密钥安全**：API Key 只存本机 `shared_preferences`，不进代码仓库；
-  正式对外分发应改为后端代理转发。
+- **口语日期**：记账工具接受「今天 / 昨天 / 3号 / 上周三 / 10月1日」等说法，
+  在本机归一为具体日期并回显，识别不了会报错请用户澄清，不瞎猜。
+- **密钥安全**：API Key 存 Android Keystore 加密存储（`flutter_secure_storage`），
+  不落明文 `SharedPreferences`、不进 APK、不参与系统备份（`allowBackup=false`）；
+  旧版明文键首次启动自动迁移并清除。正式对外分发应改为后端代理转发。
 - **扩展**：新增工具往 `buildAppTools` 里加 `AgentTool`；换供应商只需新增一个
   `LlmClient` 实现（例如将来接自建 ZeroClaw 网关）。
 
@@ -84,9 +87,9 @@ lib/
 ├── core/
 │   ├── agent/                # AI agent 框架（LLM 适配层 + 工具循环）
 │   ├── models/               # Memo、ExpenseRecord 数据模型
-│   ├── storage/app_store.dart# 全局状态 + SharedPreferences JSON 持久化
+│   ├── storage/              # 全局状态 + JSON 持久化；KeyVault（API Key 加密存储）
 │   ├── theme/                # Material 3 主题
-│   └── utils/format.dart     # 日期 / 金额格式化
+│   └── utils/                # 日期/金额格式化、口语日期归一
 └── features/
     ├── home/                 # 首页
     ├── assistant/            # AI 助手（对话 UI + 内置工具）
@@ -100,4 +103,15 @@ lib/
 
 - 状态管理：`ChangeNotifier` + `ListenableBuilder`（无第三方状态库）
 - 本地存储：`shared_preferences` + JSON，纯本机、不联网
+- 密钥存储：`flutter_secure_storage`（Android Keystore 加密）
 - UI：Material 3，支持深色模式
+
+## 后续路线（调研结论，未纳入当前版本）
+
+- **本地规则意图路由**：「记一笔午饭 25」这类高频短指令走纯 Dart 规则直接执行
+  （零成本、离线、确定性），长尾复杂问题再走 LLM——本 APP 工具面窄而固定，收益明显
+- **端侧小模型**：`LlmClient` 接口后可挂本地实现（如 llamadart + Qwen3-0.6B/1.7B），
+  完全离线零成本；需按机型 RAM 选型，注意发热降频与 4GB 机 OOM
+- **薄代理分发**：正式对外分发时上后端代理（持 key、限流、日预算熔断），
+  客户端只带 app token——APK 内永远无秘密
+- **撤销栈 / 软删除**：写操作先快照可回滚，删除 30 天可恢复

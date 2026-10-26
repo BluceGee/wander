@@ -6,24 +6,40 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../agent/llm_client.dart';
 import '../models/expense.dart';
 import '../models/memo.dart';
+import 'key_vault.dart';
 
-/// 全局应用状态：备忘录、账单、外观设置。
+/// 全局应用状态：备忘录、账单、外观设置、LLM 接入配置。
 ///
-/// 数据以 JSON 形式保存在 [SharedPreferences] 中，
-/// 界面通过 [ListenableBuilder] 监听本对象自动刷新。
+/// 一般数据以 JSON 形式保存在 [SharedPreferences] 中；
+/// API Key 单独存放于 [KeyVault]（Android Keystore 加密），
+/// 不落明文 SharedPreferences。界面通过 [ListenableBuilder] 监听刷新。
 class AppStore extends ChangeNotifier {
-  AppStore(this._prefs) {
-    _load();
+  AppStore._(this._prefs, this._vault);
+
+  /// 加载持久化状态；API Key 若存有旧版明文会迁入 [KeyVault] 并清除。
+  static Future<AppStore> create(
+    SharedPreferences prefs, {
+    KeyVault? vault,
+  }) async {
+    final store = AppStore._(prefs, vault ?? const FlutterKeyVault());
+    await store._load();
+    return store;
   }
 
   final SharedPreferences _prefs;
+  final KeyVault _vault;
 
   static const _kMemos = 'memos';
   static const _kExpenses = 'expenses';
   static const _kThemeMode = 'themeMode';
   static const _kLlmBaseUrl = 'llmBaseUrl';
-  static const _kLlmApiKey = 'llmApiKey';
   static const _kLlmModel = 'llmModel';
+
+  /// 旧版明文键（1.0.0 及以前）：只为迁移而读，读到即删。
+  static const _kLegacyLlmApiKey = 'llmApiKey';
+
+  /// KeyVault 中 API Key 的键名。
+  static const _kVaultApiKey = 'llm_api_key';
 
   List<Memo> _memos = [];
   List<ExpenseRecord> _expenses = [];
@@ -63,8 +79,14 @@ class AppStore extends ChangeNotifier {
       model: model.trim(),
     );
     await _prefs.setString(_kLlmBaseUrl, _llmConfig.baseUrl);
-    await _prefs.setString(_kLlmApiKey, _llmConfig.apiKey);
     await _prefs.setString(_kLlmModel, _llmConfig.model);
+    if (_llmConfig.apiKey.isEmpty) {
+      await _vault.delete(_kVaultApiKey);
+    } else {
+      await _vault.write(_kVaultApiKey, _llmConfig.apiKey);
+    }
+    // 防御：任何情况下都不让 API Key 落回明文 SharedPreferences
+    await _prefs.remove(_kLegacyLlmApiKey);
     notifyListeners();
   }
 
@@ -75,7 +97,7 @@ class AppStore extends ChangeNotifier {
         .toList();
   }
 
-  void _load() {
+  Future<void> _load() async {
     final memosJson = _prefs.getString(_kMemos);
     if (memosJson != null) {
       _memos = (jsonDecode(memosJson) as List)
@@ -93,9 +115,21 @@ class AppStore extends ChangeNotifier {
       (e) => e.name == mode,
       orElse: () => ThemeMode.system,
     );
+
+    // API Key：优先 KeyVault；若只有旧版明文（1.0.0），迁入 KeyVault 后删除明文
+    var apiKey = await _vault.read(_kVaultApiKey) ?? '';
+    final legacyKey = _prefs.getString(_kLegacyLlmApiKey);
+    if (legacyKey != null) {
+      if (apiKey.isEmpty && legacyKey.isNotEmpty) {
+        apiKey = legacyKey;
+        await _vault.write(_kVaultApiKey, legacyKey);
+      }
+      await _prefs.remove(_kLegacyLlmApiKey);
+    }
+
     _llmConfig = LlmConfig(
       baseUrl: _prefs.getString(_kLlmBaseUrl) ?? '',
-      apiKey: _prefs.getString(_kLlmApiKey) ?? '',
+      apiKey: apiKey,
       model: _prefs.getString(_kLlmModel) ?? '',
     );
   }

@@ -7,6 +7,7 @@ import '../../core/agent/llm_types.dart';
 import '../../core/models/expense.dart';
 import '../../core/models/memo.dart';
 import '../../core/storage/app_store.dart';
+import '../../core/utils/date_hint.dart';
 
 /// 框架内置工具集：直接操作 [AppStore] 里的备忘录与账单。
 ///
@@ -120,7 +121,8 @@ List<AgentTool> buildAppTools(AppStore store) {
             'note': {'type': 'string', 'description': '备注，可选'},
             'date': {
               'type': 'string',
-              'description': '日期 YYYY-MM-DD，默认今天',
+              'description': '日期。支持 YYYY-MM-DD，或口语：今天/昨天/前天/明天/'
+                  '3号/上周三/10月1日；默认今天。结果里会回显归一后的日期',
             },
           },
           'required': ['amount', 'category'],
@@ -144,11 +146,13 @@ List<AgentTool> buildAppTools(AppStore store) {
         final dateRaw = (args['date'] as String? ?? '').trim();
         DateTime date = DateTime.now();
         if (dateRaw.isNotEmpty) {
-          try {
-            date = DateFormat('yyyy-MM-dd').parseStrict(dateRaw);
-          } on FormatException {
-            throw FormatException('date「$dateRaw」格式错误，应为 YYYY-MM-DD');
+          final parsed = tryParseDateHint(dateRaw);
+          if (parsed == null) {
+            throw FormatException(
+                'date「$dateRaw」无法识别。可选：2026-10-26 / 今天 / 昨天 / 前天 / '
+                '明天 / 3号 / 上周三 / 10月1日');
           }
+          date = parsed;
         }
         final record = ExpenseRecord.create(
           amount: amount,

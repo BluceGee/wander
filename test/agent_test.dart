@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:xnl/core/agent/agent_service.dart';
@@ -11,6 +12,8 @@ import 'package:xnl/core/agent/llm_client.dart';
 import 'package:xnl/core/agent/llm_types.dart';
 import 'package:xnl/core/agent/openai_compat_client.dart';
 import 'package:xnl/core/storage/app_store.dart';
+import 'package:xnl/core/storage/key_vault.dart';
+import 'package:xnl/core/utils/date_hint.dart';
 import 'package:xnl/features/assistant/app_tools.dart';
 
 /// 按脚本回放的假 LLM：第 N 次调用返回第 N 个响应。
@@ -31,10 +34,11 @@ class FakeLlm implements LlmClient {
   }
 }
 
-Future<AppStore> freshStore() async {
-  SharedPreferences.setMockInitialValues({});
+Future<AppStore> freshStore(
+    [Map<String, Object> initial = const {}]) async {
+  SharedPreferences.setMockInitialValues(initial);
   final prefs = await SharedPreferences.getInstance();
-  return AppStore(prefs);
+  return AppStore.create(prefs, vault: InMemoryKeyVault());
 }
 
 void main() {
@@ -264,6 +268,110 @@ void main() {
       final result =
           await registry.run(ToolCall(id: 'c1', name: 'nope', arguments: {}));
       expect(result.isError, isTrue);
+    });
+
+    test('口语日期被归一并回显，识别不了时报错含示例', () async {
+      final store = await freshStore();
+      final registry = ToolRegistry(buildAppTools(store));
+      final ok = await registry.run(ToolCall(
+        id: 'c1',
+        name: 'add_expense',
+        arguments: {'amount': 10, 'category': '餐饮', 'date': '昨天'},
+      ));
+      expect(ok.isError, isFalse);
+      expect(ok.content, contains(DateFormat('yyyy-MM-dd')
+          .format(DateTime.now().subtract(const Duration(days: 1)))));
+
+      final bad = await registry.run(ToolCall(
+        id: 'c2',
+        name: 'add_expense',
+        arguments: {'amount': 10, 'category': '餐饮', 'date': '上个礼拜的某天'},
+      ));
+      expect(bad.isError, isTrue);
+      expect(bad.content, contains('无法识别'));
+      expect(bad.content, contains('上周三'));
+    });
+  });
+
+  group('口语日期解析', () {
+    final now = DateTime(2026, 10, 26); // 周一
+
+    test('今天/昨天/明天', () {
+      expect(tryParseDateHint('今天', now: now), DateTime(2026, 10, 26));
+      expect(tryParseDateHint('昨天', now: now), DateTime(2026, 10, 25));
+      expect(tryParseDateHint('前天', now: now), DateTime(2026, 10, 24));
+      expect(tryParseDateHint('明天', now: now), DateTime(2026, 10, 27));
+    });
+
+    test('N号：本月已过取本月，未到取上月', () {
+      expect(tryParseDateHint('3号', now: now), DateTime(2026, 10, 3));
+      expect(tryParseDateHint('28日', now: now), DateTime(2026, 9, 28));
+    });
+
+    test('周X：无前缀取最近已过，上周/本周按自然周', () {
+      // 2026-10-26 是周一
+      expect(tryParseDateHint('周三', now: now), DateTime(2026, 10, 21));
+      expect(tryParseDateHint('周一', now: now), DateTime(2026, 10, 26));
+      // 上周（10-19 ~ 10-25）的周三
+      expect(tryParseDateHint('上周三', now: now), DateTime(2026, 10, 21));
+      expect(tryParseDateHint('本周五', now: now), DateTime(2026, 10, 30));
+
+      // 换到周三：「上周三」与「周三」应区分开
+      final wednesday = DateTime(2026, 10, 28);
+      expect(tryParseDateHint('周三', now: wednesday), DateTime(2026, 10, 28));
+      expect(tryParseDateHint('上周三', now: wednesday), DateTime(2026, 10, 21));
+    });
+
+    test('M月D日 与 ISO 格式', () {
+      expect(tryParseDateHint('10月1日', now: now), DateTime(2026, 10, 1));
+      expect(tryParseDateHint('2026-10-1', now: now), DateTime(2026, 10, 1));
+      // 今年还没到 → 去年
+      expect(tryParseDateHint('12月1日', now: now), DateTime(2025, 12, 1));
+    });
+
+    test('非法日期不猜', () {
+      expect(tryParseDateHint('2月30日', now: now), isNull);
+      expect(tryParseDateHint('乱七八糟', now: now), isNull);
+      expect(tryParseDateHint('', now: now), isNull);
+    });
+  });
+
+  group('API Key 存储安全', () {
+    test('保存后 Key 只进 KeyVault，不落 SharedPreferences 明文', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final vault = InMemoryKeyVault();
+      final store = await AppStore.create(prefs, vault: vault);
+
+      await store.setLlmConfig(
+        baseUrl: 'https://mimo.example.com/v1',
+        apiKey: 'sk-secret',
+        model: 'mimo-v2.6-pro',
+      );
+
+      expect(vault.data['llm_api_key'], 'sk-secret');
+      final keys = prefs.getKeys();
+      expect(keys, isNot(contains('llmApiKey')));
+      expect(
+        keys.every((k) => (prefs.get(k)?.toString() ?? '').contains('sk-secret') == false),
+        isTrue,
+        reason: 'SharedPreferences 的任何键里都不应出现 API Key',
+      );
+    });
+
+    test('旧版明文键自动迁入 KeyVault 并从 prefs 清除', () async {
+      SharedPreferences.setMockInitialValues({
+        'llmBaseUrl': 'https://mimo.example.com/v1',
+        'llmApiKey': 'sk-legacy',
+        'llmModel': 'mimo-v2.6-pro',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final vault = InMemoryKeyVault();
+      final store = await AppStore.create(prefs, vault: vault);
+
+      expect(store.llmConfig.apiKey, 'sk-legacy');
+      expect(vault.data['llm_api_key'], 'sk-legacy');
+      expect(prefs.getKeys(), isNot(contains('llmApiKey')));
     });
   });
 }

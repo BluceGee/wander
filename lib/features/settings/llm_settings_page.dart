@@ -101,7 +101,7 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
             decoration: InputDecoration(
               labelText: 'API Key',
               hintText: 'sk-…',
-              helperText: '只保存在本机，请勿分享截图或提交到代码仓库',
+              helperText: '保存在系统加密存储（Android Keystore），请勿分享截图',
               suffixIcon: IconButton(
                 icon: Icon(
                     _obscureKey ? Icons.visibility_off : Icons.visibility),
@@ -122,7 +122,9 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
                   Text(
                     '· 支持任何 OpenAI 兼容接口（/chat/completions + function calling）\n'
                     '· 模型需要支持工具调用（tools/tool_calls），否则助手无法操作备忘录与账单\n'
-                    '· Key 存在本机，卸载 APP 即清除；正式对外分发时应改为后端代理转发',
+                    '· Key 保存在系统加密存储（Android Keystore），不进备份、卸载即清除\n'
+                    '· 请求会把你问句里的相关内容（账目/备忘录片段）发给你填写的接口地址\n'
+                    '· 正式对外分发时应改为后端代理转发，APK 内永远不带密钥',
                     style: theme.textTheme.bodySmall,
                   ),
                 ],
