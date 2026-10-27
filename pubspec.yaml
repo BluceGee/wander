@@ -15,7 +15,7 @@ dependencies:
   shared_preferences: ^2.3.0
   # 日期与金额格式化
   intl: ^0.20.0
-  # AI 助手调用 LLM API（OpenAI 兼容格式，如 MiMo 平台）
+  # AI 助手调用 LLM API（Anthropic Messages 格式）
   http: ^1.2.0
   # 证书指纹固定（自签 HTTPS 校验）
   crypto: ^3.0.0

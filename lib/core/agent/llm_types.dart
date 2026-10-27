@@ -1,7 +1,7 @@
 /// 与供应商无关的对话 / 工具调用数据结构。
 ///
-/// 框架内部一律使用这里的类型，具体 API 形状（OpenAI 兼容、
-/// Anthropic Messages 等）由 [LlmClient] 的实现负责翻译。
+/// 框架内部一律使用这里的类型，具体 API 形状（Anthropic Messages 等）
+/// 由 [LlmClient] 的实现负责翻译。
 library;
 
 /// 对话消息角色。
@@ -25,14 +25,11 @@ class ToolSpec {
   /// 写操作建议置 true，UI 层可据此做二次确认。
   final bool requiresConfirmation;
 
-  /// OpenAI 兼容的 function 工具形状。
-  Map<String, dynamic> toOpenAiJson() => {
-        'type': 'function',
-        'function': {
-          'name': name,
-          'description': description,
-          'parameters': parameters,
-        },
+  /// Anthropic Messages 的工具形状。
+  Map<String, dynamic> toAnthropicJson() => {
+        'name': name,
+        'description': description,
+        'input_schema': parameters,
       };
 }
 

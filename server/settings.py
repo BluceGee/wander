@@ -13,7 +13,7 @@ class Settings:
     token_ttl_days: int = 30
 
     # ---- LLM 薄代理（可选；不配 UPSTREAM_BASE 就不启用）----
-    # 上游 LLM 网关（OpenAI 兼容，如 MiMo 平台；也可以是本机 Ollama 的 /v1）
+    # 上游 LLM 网关（Anthropic 兼容，如 Claude API；带不带 /v1 都行）
     upstream_base: str = ''
     # 上游真实 API Key。留空 = 把客户端的 Key 原样转发（透传模式）
     upstream_key: str = ''

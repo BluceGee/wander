@@ -44,24 +44,24 @@ flutter run          # 连接手机 / 模拟器直接运行
 | 模块 | 作用 |
 | --- | --- |
 | 账号服务 | `/api/register` `/api/login` `/api/logout` `/api/me`，scrypt 哈希 + 令牌哈希 + 爆破锁 |
-| LLM 薄代理 | `/v1/chat/completions`：app token 鉴权，API Key 只留在服务器；限流 + 日配额 + 模型白名单 |
+| LLM 薄代理 | `/v1/messages`：app token（x-api-key）鉴权，API Key 只留在服务器；限流 + 日配额 + 模型白名单 |
 
 APP 侧通信：`https://115.190.50.101:8443`（自签证书 + 证书指纹固定，
-见 `lib/core/network/server_config.dart`）。MiMo 的 API Key 只写在服务器
+见 `lib/core/network/server_config.dart`）。上游的 API Key 只写在服务器
 `/etc/xnl-app/config.env`（`UPSTREAM_KEY`），**不进 APK、不进仓库**。
 
 AI 助手 LLM 接口配置两种填法：
 
 ```
 # 方式 A：走自建代理（推荐，APK 内无任何秘密）
-API 地址: https://115.190.50.101:8443/v1
+API 地址: https://115.190.50.101:8443
 API Key:  <APP_TOKEN，找部署者索取>
-模型:     mimo-v2.6-flash   （或 mimo-v2.6-pro）
+模型:     claude-opus-5-5
 
-# 方式 B：直连 MiMo 平台（Key 存手机 Keystore）
-API 地址: https://token-plan-cn.xiaomimimo.com/v1
-API Key:  <你的 MiMo API Key>
-模型:     mimo-v2.6-flash
+# 方式 B：直连 Anthropic 兼容端点（Key 存手机 Keystore）
+API 地址: https://api.anthropic.com
+API Key:  <你的 Anthropic API Key（sk-ant-…）>
+模型:     claude-opus-5-5
 ```
 
 服务器部署要点（Ubuntu 20.04 / Python 3.8 可跑）：
@@ -92,14 +92,14 @@ flutter build apk --release
 ## AI 助手（内置 agent 框架）
 
 框架是**供应商无关**的：`LlmClient` 接口 + 可插拔适配层。当前内置
-`OpenAiCompatClient`，接任何 OpenAI 兼容端点（MiMo 平台等）；模型需要支持
-function calling（`tools` / `tool_calls`）。
+`AnthropicMessagesClient`，接任何 Anthropic 兼容端点（Claude API 等）；
+模型需要支持工具调用（`tool_use` / `tool_result`）。
 
 ```
 lib/core/agent/           框架核心（与业务解耦）
 ├── llm_types.dart        ChatMessage / ToolSpec / ToolCall / ToolResult
 ├── llm_client.dart       LlmClient 接口 + LlmConfig
-├── openai_compat_client.dart  OpenAI 兼容适配层（MiMo 等）
+├── anthropic_messages_client.dart  Anthropic Messages 适配层（Claude API 等）
 ├── agent_tool.dart       AgentTool + ToolRegistry（执行失败转 is_error 回传）
 └── agent_service.dart    agent 循环：模型 → 工具 → 回传 → 最终回复
 lib/features/assistant/   应用层
@@ -110,7 +110,7 @@ lib/features/assistant/   应用层
 
 要点：
 
-- **工具循环**：模型发起 `tool_calls` → 本地执行 → 结果以 `tool` 消息回传 → 继续，
+- **工具循环**：模型发起 `tool_use` → 本地执行 → 结果以 `tool_result` 回传 → 继续，
   直到模型给出最终文本；`maxRounds` 防失控。
 - **写操作确认**：`ToolSpec.requiresConfirmation` 的工具（记一笔、建/删备忘录）
   弹窗经用户确认才执行，拒绝会以 `is_error` 告知模型。

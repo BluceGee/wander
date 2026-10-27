@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/agent/agent_service.dart';
 import '../../core/agent/agent_tool.dart';
 import '../../core/agent/llm_types.dart';
-import '../../core/agent/openai_compat_client.dart';
+import '../../core/agent/anthropic_messages_client.dart';
 import '../../core/alarm/alarm_service.dart';
 import '../../core/network/pinned_client.dart';
 import '../../core/network/server_config.dart';
@@ -73,7 +73,7 @@ class AssistantStore extends ChangeNotifier {
     notifyListeners();
 
     final service = AgentService(
-      llm: OpenAiCompatClient(
+      llm: AnthropicMessagesClient(
         config: _app.llmConfig,
         // 与账号服务共用证书固定：Base URL 填代理地址时自签证书也能过
         httpClient: createPinnedClient(ServerConfig.certPin),

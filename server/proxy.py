@@ -1,7 +1,7 @@
-"""LLM 薄代理路由（可选模块）：APP → 本服务 → LLM 网关（OpenAI 兼容）。
+"""LLM 薄代理路由（可选模块）：APP → 本服务 → LLM 网关（Anthropic 兼容）。
 
 职责（对应调研里的「薄代理」）：
-- 鉴权：客户端带 app token，代理替换为上游真实 Key（Key 不进手机）
+- 鉴权：客户端带 app token（x-api-key），代理替换为上游真实 Key（Key 不进手机）
 - 限流：每 token 每分钟 N 次 + 每天 M 次（日预算熔断），超限 429
 - 透传：请求/响应原样转发，支持 stream=true 的 SSE
 - 日志：只记元信息（状态码/耗时/字节数），绝不记正文与密钥
@@ -25,9 +25,15 @@ log = logging.getLogger('xnl-proxy')
 
 
 def _err(status: int, message: str, err_type: str, **extra) -> JSONResponse:
-    body = {'error': {'message': message, 'type': err_type}}
-    body['error'].update(extra)
-    return JSONResponse(body, status_code=status)
+    """Anthropic 错误形状：{"type": "error", "error": {...}}。"""
+    error = {'type': err_type, 'message': message}
+    error.update(extra)
+    return JSONResponse({'type': 'error', 'error': error}, status_code=status)
+
+
+def _messages_path(base: str) -> str:
+    """上游 Messages 端点路径：upstream_base 带不带 /v1 都兼容。"""
+    return '/messages' if base.rstrip('/').endswith('/v1') else '/v1/messages'
 
 
 class RateLimiter:
@@ -66,14 +72,13 @@ def create_proxy_router(st: Settings, limiter: RateLimiter | None = None) -> API
     router = APIRouter()
     limiter = limiter or RateLimiter(st.rate_limit_per_min, st.daily_req_limit)
 
-    @router.post('/v1/chat/completions')
-    async def chat_completions(request: Request):
+    @router.post('/v1/messages')
+    async def messages(request: Request):
         t0 = time.time()
         client_ip = request.client.host if request.client else '?'
 
-        # ---- 鉴权 ----
-        auth = request.headers.get('authorization', '')
-        token = auth[7:].strip() if auth.lower().startswith('bearer ') else ''
+        # ---- 鉴权（Anthropic 风格 x-api-key）----
+        token = request.headers.get('x-api-key', '').strip()
         if st.app_tokens:
             if token not in st.app_tokens:
                 log.info('auth_fail ip=%s', client_ip)
@@ -103,17 +108,21 @@ def create_proxy_router(st: Settings, limiter: RateLimiter | None = None) -> API
         if st.allowed_models and model not in st.allowed_models:
             return _err(403, f'模型 {model!r} 不在允许列表内', 'model_not_allowed')
 
-        # ---- 转发上游 ----
+        # ---- 转发上游（Anthropic Messages 协议）----
         upstream_auth = st.upstream_key or token
         headers = {
-            'Authorization': f'Bearer {upstream_auth}',
+            'x-api-key': upstream_auth,
             'Content-Type': 'application/json',
         }
+        for h in ('anthropic-version', 'anthropic-beta'):
+            if h in request.headers:
+                headers[h] = request.headers[h]
         client: httpx.AsyncClient = request.app.state.client
         try:
             upstream = await client.send(
                 client.build_request(
-                    'POST', '/chat/completions', content=body, headers=headers,
+                    'POST', _messages_path(st.upstream_base),
+                    content=body, headers=headers,
                 ),
                 stream=True,
             )

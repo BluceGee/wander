@@ -110,7 +110,7 @@ class AppStore extends ChangeNotifier {
 
   ThemeMode get themeMode => _themeMode;
 
-  /// AI 助手的 LLM 接入配置（OpenAI 兼容，如 MiMo 平台）。
+  /// AI 助手的 LLM 接入配置（Anthropic 兼容，如 Claude API）。
   LlmConfig get llmConfig => _llmConfig;
 
   Future<void> setLlmConfig({

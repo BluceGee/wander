@@ -11,7 +11,7 @@ import 'server_config.dart';
 /// - [certPin] 为空（或仍是部署前占位符）时返回普通客户端；
 /// - 否则只额外放行证书指纹与 pin 一致的自签证书。
 ///
-/// 普通 CA 签发的证书（如 MiMo 平台）走系统信任链，不会进入
+/// 普通 CA 签发的证书（如 Claude API）走系统信任链，不会进入
 /// `badCertificateCallback`，因此同一客户端可同时用于代理与直连。
 http.Client createPinnedClient(String certPin) {
   final pin = normalizePin(certPin);

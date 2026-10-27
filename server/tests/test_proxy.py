@@ -12,16 +12,14 @@ from settings import Settings
 
 
 def _upstream_echo(request: httpx.Request) -> httpx.Response:
-    """假上游：回显收到的 Authorization，并返回 OpenAI 形状响应。"""
+    """假上游：回显收到的 x-api-key，并返回 Anthropic Messages 形状响应。"""
     return httpx.Response(
         200,
         json={
-            'choices': [{
-                'finish_reason': 'stop',
-                'message': {'role': 'assistant', 'content': '你好'},
-            }],
-            'usage': {'prompt_tokens': 3, 'completion_tokens': 2},
-            'echo_auth': request.headers.get('authorization', ''),
+            'content': [{'type': 'text', 'text': '你好'}],
+            'stop_reason': 'end_turn',
+            'usage': {'input_tokens': 3, 'output_tokens': 2},
+            'echo_key': request.headers.get('x-api-key', ''),
         },
     )
 
@@ -34,7 +32,9 @@ def captured():
 @pytest.fixture()
 def client(captured):
     def handler(request: httpx.Request) -> httpx.Response:
-        captured['auth'] = request.headers.get('authorization', '')
+        captured['auth'] = request.headers.get('x-api-key', '')
+        captured['version'] = request.headers.get('anthropic-version', '')
+        captured['path'] = request.url.path
         captured['body'] = request.content
         return _upstream_echo(request)
 
@@ -53,8 +53,8 @@ def client(captured):
 
 
 def _post(client, token='app-token-1', **body):
-    headers = {'Authorization': f'Bearer {token}'} if token else {}
-    return client.post('/v1/chat/completions',
+    headers = {'x-api-key': token} if token else {}
+    return client.post('/v1/messages',
                        json={'model': 'm', 'messages': [], **body},
                        headers=headers)
 
@@ -74,8 +74,18 @@ def test_auth_required(client):
 def test_upstream_key_replaces_client_token(client, captured):
     r = _post(client, token='app-token-1')
     assert r.status_code == 200
-    assert captured['auth'] == 'Bearer sk-upstream'
-    assert r.json()['choices'][0]['message']['content'] == '你好'
+    assert captured['auth'] == 'sk-upstream'
+    assert captured['path'].endswith('/v1/messages')
+    assert r.json()['content'][0]['text'] == '你好'
+
+
+def test_anthropic_version_passthrough(client, captured):
+    r = client.post('/v1/messages',
+                    json={'model': 'm', 'messages': []},
+                    headers={'x-api-key': 'app-token-1',
+                             'anthropic-version': '2023-06-01'})
+    assert r.status_code == 200
+    assert captured['version'] == '2023-06-01'
 
 
 def test_body_forwarded_verbatim(client, captured):
@@ -113,7 +123,11 @@ def test_model_not_allowed():
 
 def test_upstream_error_passthrough():
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(429, json={'error': {'message': 'rate limited'}})
+        return httpx.Response(
+            429,
+            json={'type': 'error',
+                  'error': {'type': 'rate_limit', 'message': 'rate limited'}},
+        )
 
     st = Settings(
         db_path=':memory:',
@@ -145,8 +159,10 @@ def test_stream_passthrough():
             200,
             headers={'content-type': 'text/event-stream'},
             stream=_AsyncChunks([
-                b'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n',
-                b'data: [DONE]\n\n',
+                b'event: content_block_delta\n'
+                b'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}\n\n',
+                b'event: message_stop\n'
+                b'data: {"type":"message_stop"}\n\n',
             ]),
         )
 
@@ -160,7 +176,7 @@ def test_stream_passthrough():
     with TestClient(app) as c:
         r = _post(c, stream=True)
         assert r.status_code == 200
-        assert b'[DONE]' in r.content
+        assert b'message_stop' in r.content
 
 
 def test_open_mode_requires_allow_open():

@@ -1,5 +1,20 @@
 # 更新日志
 
+## 1.3.0 (2026-10-27)
+
+LLM 接口协议迁移：OpenAI 兼容 → **Anthropic Messages API**（不再使用 OpenAI 协议）。
+
+### 协议迁移（破坏性变更，需重新配置接口）
+- 客户端改为 `AnthropicMessagesClient`：`POST /v1/messages`，
+  `x-api-key` + `anthropic-version` 鉴权头，`max_tokens` 必填
+- 系统提示词走顶层 `system` 字段；工具为 `tools: [{name, description, input_schema}]`；
+  工具调用/回传为 `tool_use` / `tool_result` 内容块（同批结果合并进一条 user 消息）
+- 响应解析 `content` 内容块 + `stop_reason`，忽略 thinking 块
+- 服务端薄代理同步改为 `/v1/messages`，app token 从 `x-api-key` 读取，
+  上游换成 Anthropic 兼容端点（`UPSTREAM_BASE` / `UPSTREAM_KEY`）
+- 设置页文案与填写示例更新（API 地址带不带 /v1 均可，自动拼 /v1/messages）；
+  旧的 MiMo（OpenAI 兼容）配置不再可用，需重新填写 Anthropic 兼容端点
+
 ## 1.2.0 (2026-10-27)
 
 闹钟功能：铃声、时间、关闭方式、贪睡全部可自定义；杀进程也照响。

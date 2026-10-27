@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/storage/app_store.dart';
 
-/// AI 助手接口配置：OpenAI 兼容端点（如 MiMo 平台）。
+/// AI 助手接口配置：Anthropic 兼容端点（Claude API 等）。
 ///
 /// 密钥只保存在本机 shared_preferences，不会写入代码仓库。
 class LlmSettingsPage extends StatefulWidget {
@@ -72,14 +72,14 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('LLM 接口（OpenAI 兼容）', style: theme.textTheme.titleSmall),
+          Text('LLM 接口（Anthropic 兼容）', style: theme.textTheme.titleSmall),
           const SizedBox(height: 12),
           TextField(
             controller: _baseUrlCtrl,
             decoration: const InputDecoration(
               labelText: 'API 地址',
-              hintText: '例如 https://api.example.com/v1',
-              helperText: '平台控制台里的 Base URL，一般以 /v1 结尾；会自动拼 /chat/completions',
+              hintText: '例如 https://api.anthropic.com',
+              helperText: 'API 根地址，带不带 /v1 都行；会自动拼 /v1/messages',
             ),
             keyboardType: TextInputType.url,
             onChanged: (_) => setState(() => _dirty = true),
@@ -89,7 +89,7 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
             controller: _modelCtrl,
             decoration: const InputDecoration(
               labelText: '模型名',
-              hintText: '例如 mimo-v2.6-pro',
+              hintText: '例如 claude-opus-5-5',
               helperText: '平台文档里的 model id',
             ),
             onChanged: (_) => setState(() => _dirty = true),
@@ -100,7 +100,7 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
             obscureText: _obscureKey,
             decoration: InputDecoration(
               labelText: 'API Key',
-              hintText: 'sk-…',
+              hintText: 'sk-ant-…',
               helperText: '保存在系统加密存储（Android Keystore），请勿分享截图',
               suffixIcon: IconButton(
                 icon: Icon(
@@ -120,8 +120,8 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
                   Text('说明', style: theme.textTheme.titleSmall),
                   const SizedBox(height: 8),
                   Text(
-                    '· 支持任何 OpenAI 兼容接口（/chat/completions + function calling）\n'
-                    '· 模型需要支持工具调用（tools/tool_calls），否则助手无法操作备忘录与账单\n'
+                    '· 支持 Anthropic Messages API（/v1/messages + tool_use 工具调用）\n'
+                    '· 模型需要支持工具调用（tool_use），否则助手无法操作备忘录与账单\n'
                     '· Key 保存在系统加密存储（Android Keystore），不进备份、卸载即清除\n'
                     '· 请求会把你问句里的相关内容（账目/备忘录片段）发给你填写的接口地址\n'
                     '· 正式对外分发时应改为后端代理转发，APK 内永远不带密钥',

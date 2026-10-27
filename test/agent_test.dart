@@ -10,7 +10,7 @@ import 'package:xnl/core/agent/agent_service.dart';
 import 'package:xnl/core/agent/agent_tool.dart';
 import 'package:xnl/core/agent/llm_client.dart';
 import 'package:xnl/core/agent/llm_types.dart';
-import 'package:xnl/core/agent/openai_compat_client.dart';
+import 'package:xnl/core/agent/anthropic_messages_client.dart';
 import 'package:xnl/core/storage/app_store.dart';
 import 'package:xnl/core/storage/key_vault.dart';
 import 'package:xnl/core/utils/date_hint.dart';
@@ -179,43 +179,33 @@ void main() {
     });
   });
 
-  group('OpenAiCompatClient', () {
-    test('解析 tool_calls 并按 OpenAI 形状发请求', () async {
+  group('AnthropicMessagesClient', () {
+    test('按 Messages 形状发请求并解析 tool_use', () async {
       late http.Request captured;
       final mockClient = MockClient((request) async {
         captured = request;
         return http.Response(
           jsonEncode({
-            'choices': [
+            'content': [
               {
-                'finish_reason': 'tool_calls',
-                'message': {
-                  'role': 'assistant',
-                  'content': null,
-                  'tool_calls': [
-                    {
-                      'id': 'call_9',
-                      'type': 'function',
-                      'function': {
-                        'name': 'list_memos',
-                        'arguments': '{"query":"买菜"}',
-                      },
-                    }
-                  ],
-                },
-              }
+                'type': 'tool_use',
+                'id': 'toolu_9',
+                'name': 'list_memos',
+                'input': {'query': '买菜'},
+              },
             ],
+            'stop_reason': 'tool_use',
           }),
           200,
           headers: {'content-type': 'application/json'},
         );
       });
 
-      final client = OpenAiCompatClient(
+      final client = AnthropicMessagesClient(
         config: const LlmConfig(
-          baseUrl: 'https://mimo.example.com/v1/',
+          baseUrl: 'https://api.example.com/v1/',
           apiKey: 'sk-test',
-          model: 'mimo-v2.6-pro',
+          model: 'claude-opus-5-5',
         ),
         httpClient: mockClient,
       );
@@ -228,21 +218,77 @@ void main() {
         tools: [for (final t in allTools) t.spec],
       );
 
-      expect(captured.url.toString(), 'https://mimo.example.com/v1/chat/completions');
-      expect(captured.headers['Authorization'], 'Bearer sk-test');
+      expect(captured.url.toString(), 'https://api.example.com/v1/messages');
+      expect(captured.headers['x-api-key'], 'sk-test');
+      expect(captured.headers['anthropic-version'], '2023-06-01');
       final body = jsonDecode(utf8.decode(captured.bodyBytes)) as Map<String, dynamic>;
-      expect(body['model'], 'mimo-v2.6-pro');
-      expect(body['tools'], isA<List<dynamic>>());
+      expect(body['model'], 'claude-opus-5-5');
+      expect(body['max_tokens'], isA<int>());
+      final tool = (body['tools'] as List).first as Map<String, dynamic>;
+      expect(tool['input_schema'], isA<Map<String, dynamic>>());
       expect(body['messages'], hasLength(1));
 
       expect(response.toolCalls.single.name, 'list_memos');
       expect(response.toolCalls.single.arguments['query'], '买菜');
+      expect(response.finishReason, 'tool_use');
+    });
+
+    test('system 顶层下发，tool 结果合并成一条 user 消息', () async {
+      late http.Request captured;
+      final mockClient = MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode({
+            'content': [
+              {'type': 'text', 'text': '好的'},
+            ],
+            'stop_reason': 'end_turn',
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final client = AnthropicMessagesClient(
+        config:
+            const LlmConfig(baseUrl: 'https://x.test', apiKey: 'k', model: 'm'),
+        httpClient: mockClient,
+      );
+
+      await client.complete(messages: [
+        ChatMessage.system('系统提示'),
+        ChatMessage.user('查账'),
+        ChatMessage.assistant(toolCalls: [
+          ToolCall(id: 'a', name: 'list_memos', arguments: const {}),
+          ToolCall(id: 'b', name: 'list_alarms', arguments: const {}),
+        ]),
+        ChatMessage.tool(
+            result: ToolResult(toolCallId: 'a', content: '{"ok":true}')),
+        ChatMessage.tool(
+            result: ToolResult(
+                toolCallId: 'b', content: '{"ok":false}', isError: true)),
+      ]);
+
+      final body = jsonDecode(utf8.decode(captured.bodyBytes)) as Map<String, dynamic>;
+      expect(body['system'], '系统提示');
+      // user → assistant(tool_use×2) → user(tool_result×2)
+      expect(body['messages'], hasLength(3));
+      expect(body['messages'][0]['role'], 'user');
+      expect(body['messages'][1]['role'], 'assistant');
+      final assistantBlocks = body['messages'][1]['content'] as List;
+      expect(assistantBlocks.map((b) => b['type']), ['tool_use', 'tool_use']);
+      expect(assistantBlocks[1]['input'], isA<Map<String, dynamic>>());
+      final toolBlocks = body['messages'][2]['content'] as List;
+      expect(toolBlocks, hasLength(2));
+      expect(toolBlocks[0]['type'], 'tool_result');
+      expect(toolBlocks[0]['tool_use_id'], 'a');
+      expect(toolBlocks[1]['is_error'], isTrue);
     });
 
     test('非 200 抛 LlmException 且带状态码', () async {
       final mockClient =
           MockClient((_) async => http.Response('rate limited', 429));
-      final client = OpenAiCompatClient(
+      final client = AnthropicMessagesClient(
         config: const LlmConfig(
             baseUrl: 'https://x.test/v1', apiKey: 'k', model: 'm'),
         httpClient: mockClient,
