@@ -16,6 +16,8 @@ import 'package:xnl/core/storage/key_vault.dart';
 import 'package:xnl/core/utils/date_hint.dart';
 import 'package:xnl/features/assistant/app_tools.dart';
 
+import 'fakes.dart';
+
 /// 按脚本回放的假 LLM：第 N 次调用返回第 N 个响应。
 class FakeLlm implements LlmClient {
   FakeLlm(this.responses);
@@ -66,7 +68,7 @@ void main() {
 
       final service = AgentService(
         llm: llm,
-        registry: ToolRegistry(buildAppTools(store)),
+        registry: ToolRegistry(buildAppTools(store, buildFakeAlarmService(store).service)),
         systemPrompt: '你是测试助手',
       );
 
@@ -112,7 +114,7 @@ void main() {
 
       final service = AgentService(
         llm: llm,
-        registry: ToolRegistry(buildAppTools(store)),
+        registry: ToolRegistry(buildAppTools(store, buildFakeAlarmService(store).service)),
         systemPrompt: 'sys',
       );
       final history = <ChatMessage>[ChatMessage.user('记一笔')];
@@ -140,7 +142,7 @@ void main() {
 
       final service = AgentService(
         llm: llm,
-        registry: ToolRegistry(buildAppTools(store)),
+        registry: ToolRegistry(buildAppTools(store, buildFakeAlarmService(store).service)),
         systemPrompt: 'sys',
         approveTool: (call) async => call.name != 'create_memo',
       );
@@ -165,7 +167,7 @@ void main() {
       final llm = FakeLlm(List.generate(10, alwaysTool));
       final service = AgentService(
         llm: llm,
-        registry: ToolRegistry(buildAppTools(store)),
+        registry: ToolRegistry(buildAppTools(store, buildFakeAlarmService(store).service)),
         systemPrompt: 'sys',
         maxRounds: 2,
       );
@@ -218,9 +220,12 @@ void main() {
         httpClient: mockClient,
       );
 
+      final specStore = await freshStore();
+      final allTools = buildAppTools(
+          specStore, buildFakeAlarmService(specStore).service);
       final response = await client.complete(
         messages: [ChatMessage.user('找一下买菜的备忘录')],
-        tools: [for (final t in buildAppTools(await freshStore())) t.spec],
+        tools: [for (final t in allTools) t.spec],
       );
 
       expect(captured.url.toString(), 'https://mimo.example.com/v1/chat/completions');
@@ -253,7 +258,7 @@ void main() {
   group('工具校验', () {
     test('分类非法时报错并提示可选值', () async {
       final store = await freshStore();
-      final registry = ToolRegistry(buildAppTools(store));
+      final registry = ToolRegistry(buildAppTools(store, buildFakeAlarmService(store).service));
       final result = await registry.run(ToolCall(
         id: 'c1',
         name: 'add_expense',
@@ -272,7 +277,7 @@ void main() {
 
     test('口语日期被归一并回显，识别不了时报错含示例', () async {
       final store = await freshStore();
-      final registry = ToolRegistry(buildAppTools(store));
+      final registry = ToolRegistry(buildAppTools(store, buildFakeAlarmService(store).service));
       final ok = await registry.run(ToolCall(
         id: 'c1',
         name: 'add_expense',

@@ -3,20 +3,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:xnl/app.dart';
+import 'package:xnl/core/alarm/alarm_service.dart';
 import 'package:xnl/core/models/expense.dart';
 import 'package:xnl/core/models/memo.dart';
 import 'package:xnl/core/storage/app_store.dart';
 import 'package:xnl/core/storage/key_vault.dart';
 
+import 'fakes.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late AppStore store;
+  late AlarmService alarms;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     store = await AppStore.create(prefs, vault: InMemoryKeyVault());
+    alarms = buildFakeAlarmService(store).service;
   });
 
   test('备忘录增删改查', () async {
@@ -47,7 +52,7 @@ void main() {
   });
 
   testWidgets('首启显示登录引导，可跳过进入对话主页', (tester) async {
-    await tester.pumpWidget(XnlApp(store: store));
+    await tester.pumpWidget(XnlApp(store: store, alarms: alarms));
     await tester.pumpAndSettle();
 
     expect(find.text('XNL 工具箱'), findsOneWidget); // 登录页标题
@@ -63,7 +68,7 @@ void main() {
   });
 
   testWidgets('工具页展示功能入口', (tester) async {
-    await tester.pumpWidget(XnlApp(store: store));
+    await tester.pumpWidget(XnlApp(store: store, alarms: alarms));
     await tester.pumpAndSettle();
     await tester.tap(find.text('暂不登录，先逛逛'));
     await tester.pumpAndSettle();
@@ -81,7 +86,7 @@ void main() {
   });
 
   testWidgets('从工具页新建备忘录后出现在列表中', (tester) async {
-    await tester.pumpWidget(XnlApp(store: store));
+    await tester.pumpWidget(XnlApp(store: store, alarms: alarms));
     await tester.pumpAndSettle();
     await tester.tap(find.text('暂不登录，先逛逛'));
     await tester.pumpAndSettle();
@@ -106,7 +111,7 @@ void main() {
 
   testWidgets('welcomeDone 后直接进对话主页', (tester) async {
     await store.completeWelcome();
-    await tester.pumpWidget(XnlApp(store: store));
+    await tester.pumpWidget(XnlApp(store: store, alarms: alarms));
     await tester.pumpAndSettle();
     expect(find.text('你好，我是 XNL 助手'), findsOneWidget);
   });

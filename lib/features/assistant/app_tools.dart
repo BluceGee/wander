@@ -4,16 +4,19 @@ import 'package:intl/intl.dart';
 
 import '../../core/agent/agent_tool.dart';
 import '../../core/agent/llm_types.dart';
+import '../../core/alarm/alarm_service.dart';
+import '../../core/models/alarm.dart';
 import '../../core/models/expense.dart';
 import '../../core/models/memo.dart';
 import '../../core/storage/app_store.dart';
+import '../../core/utils/clock_parse.dart';
 import '../../core/utils/date_hint.dart';
 
-/// 框架内置工具集：直接操作 [AppStore] 里的备忘录与账单。
+/// 框架内置工具集：直接操作 [AppStore] 里的备忘录、账单与闹钟。
 ///
 /// 返回值统一为 JSON 字符串；抛异常即代表工具失败（会以
 /// `is_error` 回传给模型，让它自行纠正参数）。
-List<AgentTool> buildAppTools(AppStore store) {
+List<AgentTool> buildAppTools(AppStore store, AlarmService alarms) {
   return [
     AgentTool(
       spec: const ToolSpec(
@@ -277,5 +280,262 @@ List<AgentTool> buildAppTools(AppStore store) {
         });
       },
     ),
+    AgentTool(
+      spec: const ToolSpec(
+        name: 'list_alarms',
+        description: '查询闹钟列表，含开关状态、重复方式、关闭方式、贪睡设置与下次响铃时间。',
+        parameters: {
+          'type': 'object',
+          'properties': {},
+          'required': [],
+        },
+      ),
+      execute: (args) async {
+        final all = store.alarms;
+        return jsonEncode({
+          'count': all.length,
+          'alarms': [
+            for (final a in all)
+              {
+                'id': a.id,
+                'label': a.label,
+                'time': a.timeLabel,
+                'enabled': a.enabled,
+                'repeat': _repeatLabel(a),
+                'next_ring':
+                    a.enabled ? a.nextTrigger()?.toIso8601String() : null,
+                'dismiss': a.dismissMethod.label,
+                'snooze': a.snoozeEnabled
+                    ? '${a.snoozeMinutes}分钟后再响，最多${a.snoozeLimit}次'
+                    : '关闭',
+                'ringtone': a.ringtoneName,
+              }
+          ],
+        });
+      },
+    ),
+    AgentTool(
+      spec: const ToolSpec(
+        name: 'create_alarm',
+        description: '新建一个闹钟。time 支持 07:30 / 7点半 / 晚上9点15 等说法；'
+            'date 给一次性日期（口语如「明天」「10月1日」），days 给每周重复日'
+            '（1=周一 … 7=周日），两者互斥且都不给表示每天重复。'
+            '用户没说关闭方式时保持默认 tap（点一下关闭）。',
+        parameters: {
+          'type': 'object',
+          'properties': {
+            'time': {
+              'type': 'string',
+              'description': '必填。响铃时间，如 07:30、7点半、晚上9点15',
+            },
+            'label': {'type': 'string', 'description': '备注名，可选，如「晨跑」'},
+            'date': {
+              'type': 'string',
+              'description': '一次性日期：YYYY-MM-DD 或 明天/3号/10月1日。与 days 互斥',
+            },
+            'days': {
+              'type': 'array',
+              'items': {'type': 'integer'},
+              'description': '每周重复日 1~7（1=周一 … 7=周日）。与 date 互斥',
+            },
+            'dismiss_method': {
+              'type': 'string',
+              'enum': ['tap', 'hold', 'math', 'typing', 'shake'],
+              'description': '关闭方式：点一下/长按/算题/输入文字/摇一摇。默认 tap',
+            },
+            'snooze_enabled': {
+              'type': 'boolean',
+              'description': '是否允许贪睡（暂时关闭后稍后再响）。默认 true',
+            },
+            'snooze_minutes': {
+              'type': 'integer',
+              'description': '贪睡几分钟后再响，1~60，默认 9',
+            },
+            'snooze_limit': {
+              'type': 'integer',
+              'description': '最多贪睡次数，0~20，默认 3',
+            },
+          },
+          'required': ['time'],
+        },
+        requiresConfirmation: true,
+      ),
+      execute: (args) async {
+        final timeRaw = (args['time'] as String? ?? '').trim();
+        if (timeRaw.isEmpty) throw const FormatException('缺少 time');
+        final t = tryParseClockTime(timeRaw);
+        if (t == null) {
+          throw FormatException(
+              'time「$timeRaw」无法识别。可选：07:30 / 7点半 / 晚上9点15');
+        }
+
+        final dateRaw = (args['date'] as String? ?? '').trim();
+        final daysRaw = (args['days'] as List?) ?? const [];
+        if (dateRaw.isNotEmpty && daysRaw.isNotEmpty) {
+          throw const FormatException(
+              'date 与 days 不能同时给：date 是一次性闹钟，days 是每周重复');
+        }
+        DateTime? date;
+        if (dateRaw.isNotEmpty) {
+          date = tryParseDateHint(dateRaw);
+          if (date == null) {
+            throw FormatException('date「$dateRaw」无法识别。'
+                '可选：2026-11-01 / 明天 / 3号 / 10月1日');
+          }
+        }
+        final days = <int>[];
+        for (final d in daysRaw) {
+          final n = (d as num?)?.toInt();
+          if (n == null || n < 1 || n > 7) {
+            throw FormatException('days 只能是 1~7（1=周一 … 7=周日），收到：$d');
+          }
+          days.add(n);
+        }
+
+        final dismissRaw = (args['dismiss_method'] as String? ?? 'tap').trim();
+        final dismiss = AlarmDismissMethod.values.firstWhere(
+          (e) => e.name == dismissRaw,
+          orElse: () => throw FormatException('dismiss_method「$dismissRaw」无效。'
+              '可选：tap/hold/math/typing/shake'),
+        );
+
+        final snoozeEnabled = args['snooze_enabled'] as bool? ?? true;
+        final snoozeMinutes = (args['snooze_minutes'] as num?)?.toInt() ?? 9;
+        final snoozeLimit = (args['snooze_limit'] as num?)?.toInt() ?? 3;
+        if (snoozeMinutes < 1 || snoozeMinutes > 60) {
+          throw FormatException('snooze_minutes 需在 1~60，收到：$snoozeMinutes');
+        }
+        if (snoozeLimit < 0 || snoozeLimit > 20) {
+          throw FormatException('snooze_limit 需在 0~20，收到：$snoozeLimit');
+        }
+
+        final record = AlarmRecord.create(
+          hour: t.hour,
+          minute: t.minute,
+          label: (args['label'] as String? ?? '').trim(),
+          date: date,
+          daysOfWeek: days,
+          dismissMethod: dismiss,
+          snoozeEnabled: snoozeEnabled,
+          snoozeMinutes: snoozeMinutes,
+          snoozeLimit: snoozeLimit,
+        );
+        await alarms.save(record);
+        final saved = store.alarmById(record.id) ?? record;
+        return jsonEncode({
+          'ok': true,
+          'id': saved.id,
+          'time': saved.timeLabel,
+          'repeat': _repeatLabel(saved),
+          'label': saved.label,
+          'dismiss': saved.dismissMethod.label,
+          'snooze': saved.snoozeEnabled
+              ? '${saved.snoozeMinutes}分钟后再响，最多${saved.snoozeLimit}次'
+              : '关闭',
+          'enabled': saved.enabled,
+          'next_ring': saved.nextTrigger()?.toIso8601String(),
+        });
+      },
+    ),
+    AgentTool(
+      spec: const ToolSpec(
+        name: 'delete_alarm',
+        description: '删除一个闹钟。优先用 id（来自 list_alarms）；'
+            '也可以给 time（如 07:30）按时间找唯一匹配。',
+        parameters: {
+          'type': 'object',
+          'properties': {
+            'id': {'type': 'string', 'description': '闹钟 id（来自 list_alarms）'},
+            'time': {
+              'type': 'string',
+              'description': '按时间找闹钟，如 07:30 / 7点半。id 与 time 二选一',
+            },
+          },
+          'required': [],
+        },
+        requiresConfirmation: true,
+      ),
+      execute: (args) async {
+        final target = _findAlarm(store, args);
+        await alarms.remove(target.id);
+        return jsonEncode({
+          'ok': true,
+          'deleted': target.id,
+          'time': target.timeLabel,
+          'label': target.label,
+        });
+      },
+    ),
+    AgentTool(
+      spec: const ToolSpec(
+        name: 'switch_alarm',
+        description: '开启或关闭一个闹钟。优先用 id；也可以给 time（如 07:30）'
+            '按时间找唯一匹配。',
+        parameters: {
+          'type': 'object',
+          'properties': {
+            'id': {'type': 'string', 'description': '闹钟 id（来自 list_alarms）'},
+            'time': {
+              'type': 'string',
+              'description': '按时间找闹钟，如 07:30 / 7点半。id 与 time 二选一',
+            },
+            'enabled': {
+              'type': 'boolean',
+              'description': 'true=开启，false=关闭',
+            },
+          },
+          'required': ['enabled'],
+        },
+      ),
+      execute: (args) async {
+        final enabled = args['enabled'] as bool?;
+        if (enabled == null) throw const FormatException('缺少 enabled');
+        final target = _findAlarm(store, args);
+        await alarms.setEnabled(target, enabled);
+        return jsonEncode({
+          'ok': true,
+          'id': target.id,
+          'time': target.timeLabel,
+          'enabled': enabled,
+        });
+      },
+    ),
   ];
+}
+
+/// 按 id 或 time 定位唯一闹钟；找不到/有歧义抛 [FormatException]。
+AlarmRecord _findAlarm(AppStore store, Map<String, dynamic> args) {
+  final id = (args['id'] as String? ?? '').trim();
+  if (id.isNotEmpty) {
+    final target = store.alarmById(id);
+    if (target == null) throw FormatException('找不到 id 为 $id 的闹钟');
+    return target;
+  }
+  final timeRaw = (args['time'] as String? ?? '').trim();
+  if (timeRaw.isEmpty) throw const FormatException('需要 id 或 time 之一');
+  final t = tryParseClockTime(timeRaw);
+  if (t == null) {
+    throw FormatException('time「$timeRaw」无法识别。可选：07:30 / 7点半 / 晚上9点15');
+  }
+  final matches = store.alarms
+      .where((a) => a.hour == t.hour && a.minute == t.minute)
+      .toList();
+  if (matches.isEmpty) {
+    throw FormatException(
+        '找不到 ${t.hour}:${t.minute.toString().padLeft(2, '0')} 的闹钟');
+  }
+  if (matches.length > 1) {
+    throw FormatException('该时间有 ${matches.length} 个闹钟，请改用 id 指定：'
+        '${matches.map((e) => e.id).join(', ')}');
+  }
+  return matches.first;
+}
+
+String _repeatLabel(AlarmRecord record) {
+  if (record.isOneShot) {
+    return DateFormat('yyyy-MM-dd').format(record.date!);
+  }
+  if (record.isDaily) return '每天';
+  const names = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  return '每周${record.daysOfWeek.map((d) => names[d]).join('、')}';
 }

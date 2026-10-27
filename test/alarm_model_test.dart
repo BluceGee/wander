@@ -133,6 +133,13 @@ void main() {
       expect(record.scheduleId, int.parse(record.id));
     });
 
+    test('同一微秒连续 create 也唯一（防覆盖）', () {
+      final ids = {
+        for (var i = 0; i < 50; i++) AlarmRecord.create(hour: 7, minute: 0).id,
+      };
+      expect(ids, hasLength(50));
+    });
+
     test('非数字 id 稳定映射（不用 hashCode）', () {
       AlarmRecord withId(String id) => AlarmRecord(
             id: id,

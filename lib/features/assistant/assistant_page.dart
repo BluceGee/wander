@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/agent/llm_types.dart';
+import '../../core/alarm/alarm_service.dart';
 import '../../core/storage/app_store.dart';
 import '../home/home_page.dart';
 import '../settings/llm_settings_page.dart';
@@ -8,9 +9,10 @@ import 'assistant_store.dart';
 
 /// AI 助手对话页 —— APP 的主页面（豆包式：打开即对话）。
 class AssistantPage extends StatefulWidget {
-  const AssistantPage({super.key, required this.app});
+  const AssistantPage({super.key, required this.app, required this.alarms});
 
   final AppStore app;
+  final AlarmService alarms;
 
   @override
   State<AssistantPage> createState() => _AssistantPageState();
@@ -24,7 +26,7 @@ class _AssistantPageState extends State<AssistantPage> {
   @override
   void initState() {
     super.initState();
-    _store = AssistantStore(widget.app);
+    _store = AssistantStore(widget.app, widget.alarms);
     _store.confirmTool = _confirmToolCall;
   }
 
