@@ -26,6 +26,9 @@ class AlarmService {
   final AlarmScheduler _scheduler;
   final DateTime Function() _clock;
 
+  /// 持久化宿主（界面用它 ListenableBuilder 监听闹钟列表变化）。
+  AppStore get store => _store;
+
   /// 漏响补响窗口：超过则视为错过，不再吵醒用户（与 alarm 包
   /// androidStaleAfter 默认值一致）。
   static const _catchUpWindow = Duration(minutes: 15);

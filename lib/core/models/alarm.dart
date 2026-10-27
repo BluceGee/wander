@@ -103,6 +103,10 @@ class AlarmRecord {
   })  : assert(hour >= 0 && hour < 24),
         assert(minute >= 0 && minute < 60);
 
+  /// 自增护栏：同一微秒内连续 create 也能拿到唯一 id
+  ///（工具连发闹钟时会撞微秒，撞了会让后一条当成前一条的更新）。
+  static int _lastId = 0;
+
   /// 新建闹钟（id 为微秒时间戳字符串，跨运行稳定）。
   factory AlarmRecord.create({
     required int hour,
@@ -125,8 +129,11 @@ class AlarmRecord {
     int snoozeLimit = 3,
   }) {
     final now = DateTime.now();
+    var id = now.microsecondsSinceEpoch;
+    if (id <= _lastId) id = _lastId + 1;
+    _lastId = id;
     return AlarmRecord(
-      id: '${now.microsecondsSinceEpoch}',
+      id: '$id',
       hour: hour,
       minute: minute,
       createdAt: now,

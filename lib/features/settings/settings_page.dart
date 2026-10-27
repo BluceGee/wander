@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/alarm/alarm_service.dart';
 import '../../core/network/api_client.dart';
 import '../../core/storage/app_store.dart';
 import '../auth/login_page.dart';
@@ -7,9 +8,10 @@ import 'llm_settings_page.dart';
 
 /// 设置：账号、外观、数据管理、关于。
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key, required this.store});
+  const SettingsPage({super.key, required this.store, required this.alarms});
 
   final AppStore store;
+  final AlarmService alarms;
 
   @override
   Widget build(BuildContext context) {
@@ -170,7 +172,7 @@ class SettingsPage extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('清空全部数据？'),
-        content: const Text('所有备忘录和账单都会被删除，此操作不可恢复。'),
+        content: const Text('所有备忘录、账单和闹钟都会被删除，此操作不可恢复。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -188,6 +190,8 @@ class SettingsPage extends StatelessWidget {
     );
     if (confirmed == true) {
       await store.clearAll();
+      // 记录没了，把原生调度也全撤掉（rescheduleAll 会清孤儿调度）
+      await alarms.rescheduleAll();
     }
   }
 }

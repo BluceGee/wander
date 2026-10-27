@@ -103,7 +103,7 @@ class _AssistantPageState extends State<AssistantPage> {
                 tooltip: '全部功能',
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                      builder: (_) => ToolsPage(store: widget.app)),
+                      builder: (_) => ToolsPage(store: widget.app, alarms: widget.alarms)),
                 ),
               ),
               IconButton(

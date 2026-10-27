@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../core/alarm/alarm_service.dart';
 import '../../core/models/expense.dart';
 import '../../core/storage/app_store.dart';
 import '../../core/utils/format.dart';
+import '../alarm/alarm_list_page.dart';
 import '../expense/expense_page.dart';
 import '../games/games_hub_page.dart';
 import '../memo/memo_list_page.dart';
@@ -10,9 +12,10 @@ import '../settings/settings_page.dart';
 
 /// 工具页：功能入口网格 + 快速统计（从对话主页的菜单进入）。
 class ToolsPage extends StatelessWidget {
-  const ToolsPage({super.key, required this.store});
+  const ToolsPage({super.key, required this.store, required this.alarms});
 
   final AppStore store;
+  final AlarmService alarms;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +30,8 @@ class ToolsPage extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.settings_outlined),
                 tooltip: '设置',
-                onPressed: () => _open(context, SettingsPage(store: store)),
+                onPressed: () =>
+                    _open(context, SettingsPage(store: store, alarms: alarms)),
               ),
             ],
           ),
@@ -55,6 +59,13 @@ class ToolsPage extends StatelessWidget {
                   onTap: () => _open(context, ExpensePage(store: store)),
                 ),
                 _FeatureCard(
+                  icon: Icons.alarm_outlined,
+                  color: scheme.primary,
+                  title: '闹钟',
+                  subtitle: '铃声、关闭方式随心定',
+                  onTap: () => _open(context, AlarmListPage(alarms: alarms)),
+                ),
+                _FeatureCard(
                   icon: Icons.sports_esports_outlined,
                   color: scheme.error,
                   title: '小游戏',
@@ -66,7 +77,8 @@ class ToolsPage extends StatelessWidget {
                   color: scheme.secondary,
                   title: '设置',
                   subtitle: '外观、账号与数据',
-                  onTap: () => _open(context, SettingsPage(store: store)),
+                  onTap: () =>
+                      _open(context, SettingsPage(store: store, alarms: alarms)),
                 ),
               ],
             ),
