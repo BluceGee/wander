@@ -10,6 +10,7 @@ import 'package:xnl/core/storage/app_store.dart';
 import 'package:xnl/core/storage/key_vault.dart';
 import 'package:xnl/features/alarm/alarm_edit_page.dart';
 import 'package:xnl/features/alarm/alarm_list_page.dart';
+import 'package:xnl/features/alarm/alarm_permissions.dart';
 import 'package:xnl/features/alarm/alarm_ring_page.dart';
 import 'package:xnl/features/alarm/ringtone_picker.dart';
 
@@ -34,7 +35,8 @@ void main() {
   late FakeScheduler scheduler;
 
   setUp(() async {
-    SharedPreferences.setMockInitialValues({});
+    // 预置国产 ROM 引导标记，避免列表页测试被引导弹窗挡住
+    SharedPreferences.setMockInitialValues({kAlarmVendorGuideKey: true});
     final prefs = await SharedPreferences.getInstance();
     store = await AppStore.create(prefs, vault: InMemoryKeyVault());
     final built = buildFakeAlarmService(store);

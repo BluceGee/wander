@@ -3,12 +3,30 @@ import 'package:flutter/material.dart';
 import '../../core/alarm/alarm_service.dart';
 import '../../core/models/alarm.dart';
 import 'alarm_edit_page.dart';
+import 'alarm_permissions.dart';
 
 /// 闹钟列表：开关、编辑、删除、新建。
-class AlarmListPage extends StatelessWidget {
+class AlarmListPage extends StatefulWidget {
   const AlarmListPage({super.key, required this.alarms});
 
   final AlarmService alarms;
+
+  @override
+  State<AlarmListPage> createState() => _AlarmListPageState();
+}
+
+class _AlarmListPageState extends State<AlarmListPage> {
+  @override
+  void initState() {
+    super.initState();
+    // 进入闹钟页先要权限；首次附带国产 ROM 后台引导
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await AlarmPermissions.ensure(context);
+      if (!mounted) return;
+      await AlarmPermissions.showVendorGuideOnce(context);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,9 +38,9 @@ class AlarmListPage extends StatelessWidget {
         onPressed: () => _edit(context, null),
       ),
       body: ListenableBuilder(
-        listenable: alarms.store,
+        listenable: widget.alarms.store,
         builder: (context, _) {
-          final records = alarms.store.alarms;
+          final records = widget.alarms.store.alarms;
           if (records.isEmpty) {
             return const _EmptyState();
           }
@@ -32,7 +50,7 @@ class AlarmListPage extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, index) => _AlarmTile(
               record: records[index],
-              alarms: alarms,
+              alarms: widget.alarms,
               onTap: () => _edit(context, records[index]),
             ),
           );
@@ -44,7 +62,8 @@ class AlarmListPage extends StatelessWidget {
   Future<void> _edit(BuildContext context, AlarmRecord? record) {
     return Navigator.of(context).push(
       MaterialPageRoute(
-          builder: (_) => AlarmEditPage(alarms: alarms, record: record)),
+          builder: (_) =>
+              AlarmEditPage(alarms: widget.alarms, record: record)),
     );
   }
 }
