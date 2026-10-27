@@ -4,11 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../agent/llm_client.dart';
+import '../models/alarm.dart';
 import '../models/expense.dart';
 import '../models/memo.dart';
 import 'key_vault.dart';
 
-/// 全局应用状态：备忘录、账单、外观设置、LLM 接入配置。
+/// 全局应用状态：备忘录、账单、闹钟、外观设置、LLM 接入配置。
 ///
 /// 一般数据以 JSON 形式保存在 [SharedPreferences] 中；
 /// API Key 单独存放于 [KeyVault]（Android Keystore 加密），
@@ -31,6 +32,7 @@ class AppStore extends ChangeNotifier {
 
   static const _kMemos = 'memos';
   static const _kExpenses = 'expenses';
+  static const _kAlarms = 'alarms';
   static const _kThemeMode = 'themeMode';
   static const _kLlmBaseUrl = 'llmBaseUrl';
   static const _kLlmModel = 'llmModel';
@@ -48,6 +50,7 @@ class AppStore extends ChangeNotifier {
 
   List<Memo> _memos = [];
   List<ExpenseRecord> _expenses = [];
+  List<AlarmRecord> _alarms = [];
   ThemeMode _themeMode = ThemeMode.system;
   LlmConfig _llmConfig = LlmConfig.empty;
 
@@ -83,6 +86,26 @@ class AppStore extends ChangeNotifier {
     final list = [..._expenses];
     list.sort((a, b) => b.date.compareTo(a.date));
     return list;
+  }
+
+  /// 全部闹钟（按时间先后排序，同刻按 id）。
+  List<AlarmRecord> get alarms {
+    final list = [..._alarms];
+    list.sort((a, b) {
+      final c = a.hour.compareTo(b.hour);
+      if (c != 0) return c;
+      final m = a.minute.compareTo(b.minute);
+      if (m != 0) return m;
+      return a.id.compareTo(b.id);
+    });
+    return list;
+  }
+
+  AlarmRecord? alarmById(String id) {
+    for (final a in _alarms) {
+      if (a.id == id) return a;
+    }
+    return null;
   }
 
   ThemeMode get themeMode => _themeMode;
@@ -130,6 +153,12 @@ class AppStore extends ChangeNotifier {
     if (expensesJson != null) {
       _expenses = (jsonDecode(expensesJson) as List)
           .map((e) => ExpenseRecord.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    final alarmsJson = _prefs.getString(_kAlarms);
+    if (alarmsJson != null) {
+      _alarms = (jsonDecode(alarmsJson) as List)
+          .map((e) => AlarmRecord.fromJson(e as Map<String, dynamic>))
           .toList();
     }
     final mode = _prefs.getString(_kThemeMode);
@@ -202,6 +231,9 @@ class AppStore extends ChangeNotifier {
   Future<void> _persistExpenses() => _prefs.setString(
       _kExpenses, jsonEncode(_expenses.map((e) => e.toJson()).toList()));
 
+  Future<void> _persistAlarms() =>
+      _prefs.setString(_kAlarms, jsonEncode(_alarms.map((e) => e.toJson()).toList()));
+
   // ---------- 备忘录 ----------
 
   Future<void> addMemo(Memo memo) async {
@@ -243,6 +275,29 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---------- 闹钟 ----------
+
+  Future<void> addAlarm(AlarmRecord record) async {
+    _alarms = [..._alarms, record];
+    await _persistAlarms();
+    notifyListeners();
+  }
+
+  Future<void> updateAlarm(AlarmRecord record) async {
+    _alarms = [
+      for (final a in _alarms)
+        if (a.id == record.id) record else a,
+    ];
+    await _persistAlarms();
+    notifyListeners();
+  }
+
+  Future<void> deleteAlarm(String id) async {
+    _alarms = _alarms.where((a) => a.id != id).toList();
+    await _persistAlarms();
+    notifyListeners();
+  }
+
   // ---------- 设置 ----------
 
   Future<void> setThemeMode(ThemeMode mode) async {
@@ -252,11 +307,16 @@ class AppStore extends ChangeNotifier {
   }
 
   /// 清空全部数据（设置页里使用，需二次确认）。
+  ///
+  /// 注意：闹钟的原生调度不在这里撤销，调用方（设置页）应同时
+  /// 调用 AlarmService 的清理，避免留下无记录的孤儿闹钟。
   Future<void> clearAll() async {
     _memos = [];
     _expenses = [];
+    _alarms = [];
     await _persistMemos();
     await _persistExpenses();
+    await _persistAlarms();
     notifyListeners();
   }
 }
