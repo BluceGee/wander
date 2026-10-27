@@ -20,6 +20,12 @@ dependencies:
   # 证书指纹固定（自签 HTTPS 校验）
   crypto: ^3.0.0
   flutter_secure_storage: ^11.2.0
+  # 闹钟：AlarmManager 精确调度 + 前台服务循环铃声 + 全屏响铃 + 重启补响
+  alarm: ^5.15.0
+  # 摇一摇关闭：加速度计流（Android 零权限）
+  sensors_plus: ^7.1.1
+  # 闹钟权限：精确闹钟（Android 12+）与通知（Android 13+）
+  permission_handler: ^11.0.0
 
 dev_dependencies:
   flutter_test:
@@ -28,3 +34,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/sounds/
