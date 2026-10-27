@@ -46,20 +46,46 @@ void main() {
     expect(summary.byCategory['餐饮'], 50);
   });
 
-  testWidgets('首页展示功能入口', (tester) async {
+  testWidgets('首启显示登录引导，可跳过进入对话主页', (tester) async {
     await tester.pumpWidget(XnlApp(store: store));
     await tester.pumpAndSettle();
 
-    expect(find.text('XNL 工具箱'), findsWidgets);
+    expect(find.text('XNL 工具箱'), findsOneWidget); // 登录页标题
+    expect(find.text('暂不登录，先逛逛'), findsOneWidget);
+
+    await tester.tap(find.text('暂不登录，先逛逛'));
+    await tester.pumpAndSettle();
+
+    // 豆包式对话主页：问候 + 快捷指令
+    expect(find.text('你好，我是 XNL 助手'), findsOneWidget);
+    expect(find.text('记一笔午饭 25 元'), findsOneWidget);
+    expect(find.byIcon(Icons.widgets_outlined), findsOneWidget);
+  });
+
+  testWidgets('工具页展示功能入口', (tester) async {
+    await tester.pumpWidget(XnlApp(store: store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('暂不登录，先逛逛'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.widgets_outlined));
+    await tester.pumpAndSettle();
+
+    expect(find.text('全部功能'), findsWidgets);
     expect(find.text('本月支出'), findsOneWidget);
     expect(find.text('本月收入'), findsOneWidget);
-    expect(find.text('记账'), findsOneWidget);
-    expect(find.text('小游戏'), findsOneWidget);
+    expect(find.text('备忘录'), findsWidgets);
+    expect(find.text('记账'), findsWidgets);
+    expect(find.text('小游戏'), findsWidgets);
     expect(find.text('随手记，随时查'), findsOneWidget);
   });
 
-  testWidgets('新建备忘录后出现在列表中', (tester) async {
+  testWidgets('从工具页新建备忘录后出现在列表中', (tester) async {
     await tester.pumpWidget(XnlApp(store: store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('暂不登录，先逛逛'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.widgets_outlined));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.note_alt_outlined));
@@ -76,5 +102,12 @@ void main() {
 
     expect(find.text('第一条'), findsOneWidget);
     expect(find.textContaining('内容'), findsOneWidget);
+  });
+
+  testWidgets('welcomeDone 后直接进对话主页', (tester) async {
+    await store.completeWelcome();
+    await tester.pumpWidget(XnlApp(store: store));
+    await tester.pumpAndSettle();
+    expect(find.text('你好，我是 XNL 助手'), findsOneWidget);
   });
 }

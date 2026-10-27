@@ -38,13 +38,35 @@ class AppStore extends ChangeNotifier {
   /// 旧版明文键（1.0.0 及以前）：只为迁移而读，读到即删。
   static const _kLegacyLlmApiKey = 'llmApiKey';
 
-  /// KeyVault 中 API Key 的键名。
+  /// KeyVault 中 API Key / 登录令牌的键名。
   static const _kVaultApiKey = 'llm_api_key';
+  static const _kVaultAuthToken = 'auth_token';
+
+  static const _kAuthUsername = 'authUsername';
+  static const _kAuthCreatedAt = 'authCreatedAt';
+  static const _kWelcomeDone = 'welcomeDone';
 
   List<Memo> _memos = [];
   List<ExpenseRecord> _expenses = [];
   ThemeMode _themeMode = ThemeMode.system;
   LlmConfig _llmConfig = LlmConfig.empty;
+
+  String _authToken = '';
+  String _authUsername = '';
+  String _authCreatedAt = '';
+  bool _welcomeDone = false;
+
+  /// 登录令牌（存 KeyVault，不落明文）。
+  String get authToken => _authToken;
+
+  bool get isLoggedIn => _authToken.isNotEmpty;
+
+  String get authUsername => _authUsername;
+
+  String get authCreatedAt => _authCreatedAt;
+
+  /// 欢迎/登录引导是否已完成（登录或跳过都算；登录非强制）。
+  bool get welcomeDone => _welcomeDone;
 
   /// 备忘录（置顶优先，其次按更新时间倒序）。
   List<Memo> get memos {
@@ -132,6 +154,46 @@ class AppStore extends ChangeNotifier {
       apiKey: apiKey,
       model: _prefs.getString(_kLlmModel) ?? '',
     );
+
+    _authToken = await _vault.read(_kVaultAuthToken) ?? '';
+    _authUsername = _prefs.getString(_kAuthUsername) ?? '';
+    _authCreatedAt = _prefs.getString(_kAuthCreatedAt) ?? '';
+    _welcomeDone = _prefs.getBool(_kWelcomeDone) ?? false;
+  }
+
+  // ---------- 账号会话 ----------
+
+  /// 完成欢迎引导（登录或跳过都调用）。
+  Future<void> completeWelcome() async {
+    _welcomeDone = true;
+    await _prefs.setBool(_kWelcomeDone, true);
+    notifyListeners();
+  }
+
+  /// 保存登录会话：令牌进 KeyVault，用户信息进 prefs。
+  Future<void> saveSession({
+    required String token,
+    required String username,
+    required String createdAt,
+  }) async {
+    await _vault.write(_kVaultAuthToken, token);
+    await _prefs.setString(_kAuthUsername, username);
+    await _prefs.setString(_kAuthCreatedAt, createdAt);
+    _authToken = token;
+    _authUsername = username;
+    _authCreatedAt = createdAt;
+    notifyListeners();
+  }
+
+  /// 清除本地会话（退出登录）。
+  Future<void> clearSession() async {
+    await _vault.delete(_kVaultAuthToken);
+    await _prefs.remove(_kAuthUsername);
+    await _prefs.remove(_kAuthCreatedAt);
+    _authToken = '';
+    _authUsername = '';
+    _authCreatedAt = '';
+    notifyListeners();
   }
 
   Future<void> _persistMemos() =>

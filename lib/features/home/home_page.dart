@@ -3,15 +3,14 @@ import 'package:flutter/material.dart';
 import '../../core/models/expense.dart';
 import '../../core/storage/app_store.dart';
 import '../../core/utils/format.dart';
-import '../assistant/assistant_page.dart';
 import '../expense/expense_page.dart';
 import '../games/games_hub_page.dart';
 import '../memo/memo_list_page.dart';
 import '../settings/settings_page.dart';
 
-/// 首页：功能入口网格 + 快速统计。
-class HomePage extends StatelessWidget {
-  const HomePage({super.key, required this.store});
+/// 工具页：功能入口网格 + 快速统计（从对话主页的菜单进入）。
+class ToolsPage extends StatelessWidget {
+  const ToolsPage({super.key, required this.store});
 
   final AppStore store;
 
@@ -23,7 +22,7 @@ class HomePage extends StatelessWidget {
       body: CustomScrollView(
         slivers: [
           SliverAppBar.large(
-            title: const Text('XNL 工具箱'),
+            title: const Text('全部功能'),
             actions: [
               IconButton(
                 icon: const Icon(Icons.settings_outlined),
@@ -41,13 +40,6 @@ class HomePage extends StatelessWidget {
               crossAxisSpacing: 12,
               childAspectRatio: 1.35,
               children: [
-                _FeatureCard(
-                  icon: Icons.smart_toy_outlined,
-                  color: scheme.primary,
-                  title: 'AI 助手',
-                  subtitle: '说句话，帮你记账查备忘',
-                  onTap: () => _open(context, AssistantPage(app: store)),
-                ),
                 _FeatureCard(
                   icon: Icons.note_alt_outlined,
                   color: scheme.secondary,
@@ -73,7 +65,7 @@ class HomePage extends StatelessWidget {
                   icon: Icons.settings_outlined,
                   color: scheme.secondary,
                   title: '设置',
-                  subtitle: '外观与数据',
+                  subtitle: '外观、账号与数据',
                   onTap: () => _open(context, SettingsPage(store: store)),
                 ),
               ],

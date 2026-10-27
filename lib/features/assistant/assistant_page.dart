@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../core/agent/llm_types.dart';
 import '../../core/storage/app_store.dart';
+import '../home/home_page.dart';
 import '../settings/llm_settings_page.dart';
 import 'assistant_store.dart';
 
-/// AI 助手对话页。
+/// AI 助手对话页 —— APP 的主页面（豆包式：打开即对话）。
 class AssistantPage extends StatefulWidget {
   const AssistantPage({super.key, required this.app});
 
@@ -78,6 +79,12 @@ class _AssistantPageState extends State<AssistantPage> {
     _scrollToBottom();
   }
 
+  /// 快捷指令：直接发送（豆包式一点即发）。
+  Future<void> _sendPreset(String text) async {
+    await _store.send(text);
+    _scrollToBottom();
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -87,8 +94,16 @@ class _AssistantPageState extends State<AssistantPage> {
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text('AI 助手'),
+            title: const Text('XNL 助手'),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.widgets_outlined),
+                tooltip: '全部功能',
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                      builder: (_) => ToolsPage(store: widget.app)),
+                ),
+              ),
               IconButton(
                 icon: const Icon(Icons.tune),
                 tooltip: '接口配置',
@@ -114,7 +129,12 @@ class _AssistantPageState extends State<AssistantPage> {
               ),
               Expanded(
                 child: _store.messages.isEmpty
-                    ? const _EmptyHint()
+                    ? _EmptyHint(
+                        username: widget.app.isLoggedIn
+                            ? widget.app.authUsername
+                            : null,
+                        onPreset: _sendPreset,
+                      )
                     : ListView.builder(
                         controller: _scrollCtrl,
                         padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
@@ -374,26 +394,58 @@ class _ErrorBanner extends StatelessWidget {
 }
 
 class _EmptyHint extends StatelessWidget {
-  const _EmptyHint();
+  const _EmptyHint({this.username, required this.onPreset});
+
+  final String? username;
+  final ValueChanged<String> onPreset;
+
+  static const _presets = [
+    '记一笔午饭 25 元',
+    '这个月花了多少',
+    '写条明天开会的备忘录',
+    '查一下买菜的备忘录',
+  ];
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.smart_toy_outlined,
-                size: 72, color: theme.colorScheme.outlineVariant),
-            const SizedBox(height: 12),
-            Text('有什么可以帮你？', style: theme.textTheme.titleMedium),
+            CircleAvatar(
+              radius: 40,
+              backgroundColor:
+                  theme.colorScheme.primaryContainer,
+              child: Icon(Icons.auto_awesome,
+                  size: 40, color: theme.colorScheme.onPrimaryContainer),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              username == null ? '你好，我是 XNL 助手' : '你好，$username',
+              style: theme.textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 8),
             Text(
-              '试试「记一笔午饭 25 元」\n或「这个月吃饭花了多少」',
+              '可以帮你记账、查账、管理备忘录\n试试下面的指令，或直接输入',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 20),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                for (final p in _presets)
+                  ActionChip(
+                    label: Text(p),
+                    onPressed: () => onPreset(p),
+                  ),
+              ],
             ),
           ],
         ),

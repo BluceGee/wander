@@ -5,6 +5,8 @@ import '../../core/agent/agent_service.dart';
 import '../../core/agent/agent_tool.dart';
 import '../../core/agent/llm_types.dart';
 import '../../core/agent/openai_compat_client.dart';
+import '../../core/network/pinned_client.dart';
+import '../../core/network/server_config.dart';
 import '../../core/storage/app_store.dart';
 import 'app_tools.dart';
 
@@ -67,7 +69,11 @@ class AssistantStore extends ChangeNotifier {
     notifyListeners();
 
     final service = AgentService(
-      llm: OpenAiCompatClient(config: _app.llmConfig),
+      llm: OpenAiCompatClient(
+        config: _app.llmConfig,
+        // 与账号服务共用证书固定：Base URL 填代理地址时自签证书也能过
+        httpClient: createPinnedClient(ServerConfig.certPin),
+      ),
       registry: ToolRegistry(buildAppTools(_app)),
       systemPrompt: buildSystemPrompt(),
       approveTool: confirmTool,

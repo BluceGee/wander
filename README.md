@@ -6,12 +6,13 @@
 
 | 模块 | 说明 |
 | --- | --- |
-| 🤖 AI 助手 | 内置 agent 框架：自然语言记账、查账单、管理备忘录（需配置 LLM 接口） |
-| 🏠 首页 | 功能入口 + 本月收支、备忘录数量速览 |
+| 🤖 对话主页 | 打开即豆包式 agent 对话窗口：问候 + 快捷指令，内置 agent 框架 |
+| 🔑 登录 | **可选、可跳过**：注册 / 登录 / 退出，不登录全功能可用 |
+| 🏠 全部功能 | 功能入口 + 本月收支、备忘录数量速览（右上角菜单进入） |
 | 📝 备忘录 | 新建 / 编辑 / 删除 / 置顶，长按删除 |
 | 💰 记账 | 支出 / 收入录入，分类统计，按月查看流水，左滑删除 |
 | 🎮 小游戏 | 井字棋（AI 对手，极小化极大算法）、猜数字 |
-| ⚙️ 设置 | 浅色 / 深色 / 跟随系统，LLM 接口配置，清空数据 |
+| ⚙️ 设置 | 账号、浅色 / 深色 / 跟随系统，LLM 接口配置，清空数据 |
 
 ## 开发环境
 
@@ -25,6 +26,50 @@
 flutter pub get      # 安装依赖
 flutter test         # 运行测试
 flutter run          # 连接手机 / 模拟器直接运行
+```
+
+## 登录（可选）
+
+首启显示登录引导，点「暂不登录，先逛逛」直接进对话主页——**登录完全可选**，
+不登录不影响任何功能。之后可在「设置 → 账号」随时登录 / 退出。
+
+- 账号服务在自建服务器上（见下），注册即用；登录令牌存 Android Keystore
+- 登出只清本机会话，备忘录 / 账单等数据始终只存在本机
+
+## 云端服务器（server/）
+
+自建后端一个服务两份职责（Python FastAPI，见 [server/](server/)）：
+
+| 模块 | 作用 |
+| --- | --- |
+| 账号服务 | `/api/register` `/api/login` `/api/logout` `/api/me`，scrypt 哈希 + 令牌哈希 + 爆破锁 |
+| LLM 薄代理 | `/v1/chat/completions`：app token 鉴权，API Key 只留在服务器；限流 + 日配额 + 模型白名单 |
+
+APP 侧通信：`https://115.190.50.101:8443`（自签证书 + 证书指纹固定，
+见 `lib/core/network/server_config.dart`）。MiMo 的 API Key 只写在服务器
+`/etc/xnl-app/config.env`（`UPSTREAM_KEY`），**不进 APK、不进仓库**。
+
+AI 助手 LLM 接口配置两种填法：
+
+```
+# 方式 A：走自建代理（推荐，APK 内无任何秘密）
+API 地址: https://115.190.50.101:8443/v1
+API Key:  <APP_TOKEN，找部署者索取>
+模型:     mimo-v2.6-flash   （或 mimo-v2.6-pro）
+
+# 方式 B：直连 MiMo 平台（Key 存手机 Keystore）
+API 地址: https://token-plan-cn.xiaomimimo.com/v1
+API Key:  <你的 MiMo API Key>
+模型:     mimo-v2.6-flash
+```
+
+服务器部署要点（Ubuntu 20.04 / Python 3.8 可跑）：
+
+```bash
+# 代码在 /opt/xnl-app，venv 装依赖；配置在 /etc/xnl-app/config.env（chmod 600）
+# 自签证书含 IP SAN 在 /etc/xnl-app/tls/；systemd 单元 xnl-app（低权限用户）
+systemctl status xnl-app        # 服务状态
+journalctl -u xnl-app -f        # 日志（只记元信息，不记正文与密钥）
 ```
 
 ## 打包 APK（安装到小米手机）
@@ -72,7 +117,7 @@ lib/features/assistant/   应用层
   在本机归一为具体日期并回显，识别不了会报错请用户澄清，不瞎猜。
 - **密钥安全**：API Key 存 Android Keystore 加密存储（`flutter_secure_storage`），
   不落明文 `SharedPreferences`、不进 APK、不参与系统备份（`allowBackup=false`）；
-  旧版明文键首次启动自动迁移并清除。正式对外分发应改为后端代理转发。
+  旧版明文键首次启动自动迁移并清除。对外分发推荐走自建薄代理（见上节）。
 - **扩展**：新增工具往 `buildAppTools` 里加 `AgentTool`；换供应商只需新增一个
   `LlmClient` 实现（例如将来接自建 ZeroClaw 网关）。
 
@@ -86,13 +131,15 @@ lib/
 ├── app.dart                  # MaterialApp / 主题
 ├── core/
 │   ├── agent/                # AI agent 框架（LLM 适配层 + 工具循环）
-│   ├── models/               # Memo、ExpenseRecord 数据模型
+│   ├── network/              # 账号 ApiClient、证书固定、服务器地址配置
+│   ├── models/               # Memo、ExpenseRecord、账号数据模型
 │   ├── storage/              # 全局状态 + JSON 持久化；KeyVault（API Key 加密存储）
 │   ├── theme/                # Material 3 主题
 │   └── utils/                # 日期/金额格式化、口语日期归一
 └── features/
-    ├── home/                 # 首页
-    ├── assistant/            # AI 助手（对话 UI + 内置工具）
+    ├── auth/                 # 登录 / 注册（可跳过）
+    ├── home/                 # 全部功能（工具页）
+    ├── assistant/            # 对话主页（豆包式 UI + 内置工具）
     ├── memo/                 # 备忘录
     ├── expense/              # 记账
     ├── games/                # 游戏大厅、井字棋、猜数字
@@ -112,6 +159,4 @@ lib/
   （零成本、离线、确定性），长尾复杂问题再走 LLM——本 APP 工具面窄而固定，收益明显
 - **端侧小模型**：`LlmClient` 接口后可挂本地实现（如 llamadart + Qwen3-0.6B/1.7B），
   完全离线零成本；需按机型 RAM 选型，注意发热降频与 4GB 机 OOM
-- **薄代理分发**：正式对外分发时上后端代理（持 key、限流、日预算熔断），
-  客户端只带 app token——APK 内永远无秘密
 - **撤销栈 / 软删除**：写操作先快照可回滚，删除 30 天可恢复
