@@ -38,7 +38,7 @@ class AnthropicMessagesClient implements LlmClient {
     List<ToolSpec> tools = const [],
   }) async {
     final body = <String, dynamic>{
-      'model': config.model,
+      'model': kLlmModel,
       'max_tokens': maxTokens,
       'messages': _messagesToJson(messages),
     };

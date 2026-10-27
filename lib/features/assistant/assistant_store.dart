@@ -62,7 +62,7 @@ class AssistantStore extends ChangeNotifier {
     if (trimmed.isEmpty || _busy) return;
 
     if (!isConfigured) {
-      _error = '尚未配置 LLM 接口：请到「设置 → AI 助手」填写 API 地址与密钥。';
+      _error = '尚未配置 LLM 接口：请到「设置 → AI 助手」填写 API Key。';
       notifyListeners();
       return;
     }

@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/storage/app_store.dart';
 
-/// AI 助手接口配置：Anthropic 兼容端点（Claude API 等）。
+/// AI 助手接口配置：只需填 API Key（端点与模型已写死在程序里）。
 ///
-/// 密钥只保存在本机 shared_preferences，不会写入代码仓库。
+/// 密钥只保存在本机加密存储，不会写入代码仓库。
 class LlmSettingsPage extends StatefulWidget {
   const LlmSettingsPage({super.key, required this.store});
 
@@ -15,8 +15,6 @@ class LlmSettingsPage extends StatefulWidget {
 }
 
 class _LlmSettingsPageState extends State<LlmSettingsPage> {
-  late final TextEditingController _baseUrlCtrl;
-  late final TextEditingController _modelCtrl;
   late final TextEditingController _apiKeyCtrl;
   bool _obscureKey = true;
   bool _dirty = false;
@@ -24,26 +22,17 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
   @override
   void initState() {
     super.initState();
-    final config = widget.store.llmConfig;
-    _baseUrlCtrl = TextEditingController(text: config.baseUrl);
-    _modelCtrl = TextEditingController(text: config.model);
-    _apiKeyCtrl = TextEditingController(text: config.apiKey);
+    _apiKeyCtrl = TextEditingController(text: widget.store.llmConfig.apiKey);
   }
 
   @override
   void dispose() {
-    _baseUrlCtrl.dispose();
-    _modelCtrl.dispose();
     _apiKeyCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
-    await widget.store.setLlmConfig(
-      baseUrl: _baseUrlCtrl.text,
-      apiKey: _apiKeyCtrl.text,
-      model: _modelCtrl.text,
-    );
+    await widget.store.setLlmApiKey(_apiKeyCtrl.text);
     if (mounted) {
       setState(() => _dirty = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -72,35 +61,14 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('LLM 接口（Anthropic 兼容）', style: theme.textTheme.titleSmall),
+          Text('API Key', style: theme.textTheme.titleSmall),
           const SizedBox(height: 12),
-          TextField(
-            controller: _baseUrlCtrl,
-            decoration: const InputDecoration(
-              labelText: 'API 地址',
-              hintText: '例如 https://api.anthropic.com',
-              helperText: 'API 根地址，带不带 /v1 都行；会自动拼 /v1/messages',
-            ),
-            keyboardType: TextInputType.url,
-            onChanged: (_) => setState(() => _dirty = true),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _modelCtrl,
-            decoration: const InputDecoration(
-              labelText: '模型名',
-              hintText: '例如 claude-opus-5-5',
-              helperText: '平台文档里的 model id',
-            ),
-            onChanged: (_) => setState(() => _dirty = true),
-          ),
-          const SizedBox(height: 16),
           TextField(
             controller: _apiKeyCtrl,
             obscureText: _obscureKey,
             decoration: InputDecoration(
               labelText: 'API Key',
-              hintText: 'sk-ant-…',
+              hintText: 'tp-…',
               helperText: '保存在系统加密存储（Android Keystore），请勿分享截图',
               suffixIcon: IconButton(
                 icon: Icon(
@@ -120,10 +88,10 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
                   Text('说明', style: theme.textTheme.titleSmall),
                   const SizedBox(height: 8),
                   Text(
-                    '· 支持 Anthropic Messages API（/v1/messages + tool_use 工具调用）\n'
-                    '· 模型需要支持工具调用（tool_use），否则助手无法操作备忘录与账单\n'
+                    '· 接口地址与模型已内置（MiMo 平台），只需填 API Key\n'
+                    '· 语音输入（mimo-v2.5-asr）与语音播报（mimo-v2.5-tts）使用同一个 Key\n'
                     '· Key 保存在系统加密存储（Android Keystore），不进备份、卸载即清除\n'
-                    '· 请求会把你问句里的相关内容（账目/备忘录片段）发给你填写的接口地址\n'
+                    '· 请求会把你问句里的相关内容（账目/备忘录片段）与语音发给 MiMo 平台\n'
                     '· 正式对外分发时应改为后端代理转发，APK 内永远不带密钥',
                     style: theme.textTheme.bodySmall,
                   ),

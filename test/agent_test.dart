@@ -202,11 +202,7 @@ void main() {
       });
 
       final client = AnthropicMessagesClient(
-        config: const LlmConfig(
-          baseUrl: 'https://api.example.com/v1/',
-          apiKey: 'sk-test',
-          model: 'claude-opus-5-5',
-        ),
+        config: const LlmConfig(apiKey: 'sk-test'),
         httpClient: mockClient,
       );
 
@@ -218,11 +214,11 @@ void main() {
         tools: [for (final t in allTools) t.spec],
       );
 
-      expect(captured.url.toString(), 'https://api.example.com/v1/messages');
+      expect(captured.url.toString(), '$kLlmBaseUrl/messages');
       expect(captured.headers['x-api-key'], 'sk-test');
       expect(captured.headers['anthropic-version'], '2023-06-01');
       final body = jsonDecode(utf8.decode(captured.bodyBytes)) as Map<String, dynamic>;
-      expect(body['model'], 'claude-opus-5-5');
+      expect(body['model'], kLlmModel);
       expect(body['max_tokens'], isA<int>());
       final tool = (body['tools'] as List).first as Map<String, dynamic>;
       expect(tool['input_schema'], isA<Map<String, dynamic>>());
@@ -250,8 +246,7 @@ void main() {
       });
 
       final client = AnthropicMessagesClient(
-        config:
-            const LlmConfig(baseUrl: 'https://x.test', apiKey: 'k', model: 'm'),
+        config: const LlmConfig(apiKey: 'k'),
         httpClient: mockClient,
       );
 
@@ -289,8 +284,7 @@ void main() {
       final mockClient =
           MockClient((_) async => http.Response('rate limited', 429));
       final client = AnthropicMessagesClient(
-        config: const LlmConfig(
-            baseUrl: 'https://x.test/v1', apiKey: 'k', model: 'm'),
+        config: const LlmConfig(apiKey: 'k'),
         httpClient: mockClient,
       );
       expect(
@@ -394,11 +388,7 @@ void main() {
       final vault = InMemoryKeyVault();
       final store = await AppStore.create(prefs, vault: vault);
 
-      await store.setLlmConfig(
-        baseUrl: 'https://mimo.example.com/v1',
-        apiKey: 'sk-secret',
-        model: 'mimo-v2.6-pro',
-      );
+      await store.setLlmApiKey('sk-secret');
 
       expect(vault.data['llm_api_key'], 'sk-secret');
       final keys = prefs.getKeys();
@@ -423,6 +413,21 @@ void main() {
       expect(store.llmConfig.apiKey, 'sk-legacy');
       expect(vault.data['llm_api_key'], 'sk-legacy');
       expect(prefs.getKeys(), isNot(contains('llmApiKey')));
+      // 端点/模型已写死进代码，残留配置键一并清掉
+      expect(prefs.getKeys(), isNot(contains('llmBaseUrl')));
+      expect(prefs.getKeys(), isNot(contains('llmModel')));
+    });
+
+    test('语音播报开关默认开并持久化', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final store =
+          await AppStore.create(prefs, vault: InMemoryKeyVault());
+
+      expect(store.voiceReplyEnabled, isTrue);
+      await store.setVoiceReplyEnabled(false);
+      expect(store.voiceReplyEnabled, isFalse);
+      expect(prefs.getBool('voiceReply'), isFalse);
     });
   });
 }

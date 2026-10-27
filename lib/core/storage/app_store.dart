@@ -34,8 +34,7 @@ class AppStore extends ChangeNotifier {
   static const _kExpenses = 'expenses';
   static const _kAlarms = 'alarms';
   static const _kThemeMode = 'themeMode';
-  static const _kLlmBaseUrl = 'llmBaseUrl';
-  static const _kLlmModel = 'llmModel';
+  static const _kVoiceReply = 'voiceReply';
 
   /// 旧版明文键（1.0.0 及以前）：只为迁移而读，读到即删。
   static const _kLegacyLlmApiKey = 'llmApiKey';
@@ -53,6 +52,7 @@ class AppStore extends ChangeNotifier {
   List<AlarmRecord> _alarms = [];
   ThemeMode _themeMode = ThemeMode.system;
   LlmConfig _llmConfig = LlmConfig.empty;
+  bool _voiceReply = true;
 
   String _authToken = '';
   String _authUsername = '';
@@ -110,21 +110,12 @@ class AppStore extends ChangeNotifier {
 
   ThemeMode get themeMode => _themeMode;
 
-  /// AI 助手的 LLM 接入配置（Anthropic 兼容，如 Claude API）。
+  /// AI 助手的 LLM 接入配置（端点与模型写死，只有 API Key 可配）。
   LlmConfig get llmConfig => _llmConfig;
 
-  Future<void> setLlmConfig({
-    required String baseUrl,
-    required String apiKey,
-    required String model,
-  }) async {
-    _llmConfig = LlmConfig(
-      baseUrl: baseUrl.trim(),
-      apiKey: apiKey.trim(),
-      model: model.trim(),
-    );
-    await _prefs.setString(_kLlmBaseUrl, _llmConfig.baseUrl);
-    await _prefs.setString(_kLlmModel, _llmConfig.model);
+  /// 保存 API Key（端点与模型写死，无需配置）。
+  Future<void> setLlmApiKey(String apiKey) async {
+    _llmConfig = LlmConfig(apiKey: apiKey.trim());
     if (_llmConfig.apiKey.isEmpty) {
       await _vault.delete(_kVaultApiKey);
     } else {
@@ -132,6 +123,15 @@ class AppStore extends ChangeNotifier {
     }
     // 防御：任何情况下都不让 API Key 落回明文 SharedPreferences
     await _prefs.remove(_kLegacyLlmApiKey);
+    notifyListeners();
+  }
+
+  /// 语音播报开关（助手回复用 TTS 朗读）。
+  bool get voiceReplyEnabled => _voiceReply;
+
+  Future<void> setVoiceReplyEnabled(bool value) async {
+    _voiceReply = value;
+    await _prefs.setBool(_kVoiceReply, value);
     notifyListeners();
   }
 
@@ -178,11 +178,12 @@ class AppStore extends ChangeNotifier {
       await _prefs.remove(_kLegacyLlmApiKey);
     }
 
-    _llmConfig = LlmConfig(
-      baseUrl: _prefs.getString(_kLlmBaseUrl) ?? '',
-      apiKey: apiKey,
-      model: _prefs.getString(_kLlmModel) ?? '',
-    );
+    _llmConfig = LlmConfig(apiKey: apiKey);
+    // 旧版的 baseUrl/model 配置项已写死进代码，清理残留键
+    await _prefs.remove('llmBaseUrl');
+    await _prefs.remove('llmModel');
+
+    _voiceReply = _prefs.getBool(_kVoiceReply) ?? true;
 
     _authToken = await _vault.read(_kVaultAuthToken) ?? '';
     _authUsername = _prefs.getString(_kAuthUsername) ?? '';

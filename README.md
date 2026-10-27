@@ -50,19 +50,9 @@ APP 侧通信：`https://115.190.50.101:8443`（自签证书 + 证书指纹固�
 见 `lib/core/network/server_config.dart`）。上游的 API Key 只写在服务器
 `/etc/xnl-app/config.env`（`UPSTREAM_KEY`），**不进 APK、不进仓库**。
 
-AI 助手 LLM 接口配置两种填法：
-
-```
-# 方式 A：走自建代理（推荐，APK 内无任何秘密）
-API 地址: https://115.190.50.101:8443
-API Key:  <APP_TOKEN，找部署者索取>
-模型:     claude-opus-5-5
-
-# 方式 B：直连 Anthropic 兼容端点（Key 存手机 Keystore）
-API 地址: https://api.anthropic.com
-API Key:  <你的 Anthropic API Key（sk-ant-…）>
-模型:     claude-opus-5-5
-```
+AI 助手接口配置：**只需填 API Key**。接口地址与模型已写死在程序里
+（MiMo Anthropic 兼容端点，对话用 `mimo-v2.6-flash`），
+语音识别（`mimo-v2.5-asr`）与语音合成（`mimo-v2.5-tts`）共用同一个 Key。
 
 服务器部署要点（Ubuntu 20.04 / Python 3.8 可跑）：
 
@@ -105,7 +95,11 @@ lib/core/agent/           框架核心（与业务解耦）
 lib/features/assistant/   应用层
 ├── app_tools.dart        内置工具（备忘录 CRUD、记账、查账/月报）
 ├── assistant_store.dart  会话状态 + 系统提示词
-└── assistant_page.dart   对话界面（工具调用可视化、写操作二次确认）
+└── assistant_page.dart   对话界面（工具调用可视化、写操作二次确认、语音输入/播报）
+lib/core/voice/           语音层
+├── voice_api.dart        ASR（mimo-v2.5-asr）/ TTS（mimo-v2.5-tts）客户端
+├── voice_recorder.dart   麦克风录音（16kHz WAV + 权限申请）
+└── tts_player.dart       WAV 字节播放（语音播报）
 ```
 
 要点：
@@ -116,13 +110,15 @@ lib/features/assistant/   应用层
   弹窗经用户确认才执行，拒绝会以 `is_error` 告知模型。
 - **口语日期**：记账工具接受「今天 / 昨天 / 3号 / 上周三 / 10月1日」等说法，
   在本机归一为具体日期并回显，识别不了会报错请用户澄清，不瞎猜。
+- **语音输入 / 播报**：麦克风按钮录音识别后直接发送；回复完成自动 TTS 播报，
+  顶栏喇叭图标开关（豆包式），关掉即停。
 - **密钥安全**：API Key 存 Android Keystore 加密存储（`flutter_secure_storage`），
   不落明文 `SharedPreferences`、不进 APK、不参与系统备份（`allowBackup=false`）；
   旧版明文键首次启动自动迁移并清除。对外分发推荐走自建薄代理（见上节）。
 - **扩展**：新增工具往 `buildAppTools` 里加 `AgentTool`；换供应商只需新增一个
   `LlmClient` 实现（例如将来接自建 ZeroClaw 网关）。
 
-配置入口：`设置 → AI 助手 → LLM 接口配置`（API 地址 / 模型名 / API Key）。
+配置入口：`设置 → AI 助手 → LLM 接口配置`（只需 API Key）。
 
 ## 项目结构
 

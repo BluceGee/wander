@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/agent/llm_client.dart';
 import '../../core/alarm/alarm_service.dart';
 import '../../core/network/api_client.dart';
 import '../../core/storage/app_store.dart';
@@ -105,7 +106,7 @@ class SettingsPage extends StatelessWidget {
                   title: const Text('LLM 接口配置'),
                   subtitle: Text(
                     store.llmConfig.isConfigured
-                        ? '已配置：${store.llmConfig.model}'
+                        ? '已配置（模型 $kLlmModel）'
                         : '未配置',
                   ),
                   trailing: const Icon(Icons.chevron_right),
@@ -124,7 +125,7 @@ class SettingsPage extends StatelessWidget {
                     ListTile(
                       leading: Icon(Icons.info_outline),
                       title: Text('XNL 工具箱'),
-                      subtitle: Text('版本 1.2.0'),
+                      subtitle: Text('版本 1.4.0'),
                     ),
                     ListTile(
                       leading: Icon(Icons.flutter_dash),

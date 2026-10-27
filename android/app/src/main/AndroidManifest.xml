@@ -20,6 +20,8 @@
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <!-- 选择系统铃声 / 本地音乐作为铃声 -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- 语音输入（助手对话录音识别） -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />

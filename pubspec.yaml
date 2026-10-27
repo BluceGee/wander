@@ -2,7 +2,7 @@ name: xnl
 description: "XNL 工具箱 —— 备忘录、记账、闹钟、小游戏合集"
 publish_to: 'none'
 
-version: 1.2.0+4
+version: 1.4.0+5
 
 environment:
   sdk: ^3.13.7
@@ -26,6 +26,9 @@ dependencies:
   sensors_plus: ^7.1.1
   # 闹钟权限：精确闹钟（Android 12+）与通知（Android 13+）
   permission_handler: ^11.0.0
+  record: ^7.1.2
+  audioplayers: ^6.8.1
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:

@@ -1,31 +1,26 @@
 import 'llm_types.dart';
 
-/// LLM 接入配置（Anthropic 兼容端点）。
-///
-/// [baseUrl] 取 API 根地址，例如 `https://api.anthropic.com`；
-/// 带不带 `/v1` 都行，会自动归一到 `/v1/messages`。
-class LlmConfig {
-  const LlmConfig({
-    required this.baseUrl,
-    required this.apiKey,
-    required this.model,
-  });
+/// MiMo Anthropic 兼容端点（写死，非配置项）。
+const kLlmBaseUrl = 'https://token-plan-cn.xiaomimimo.com/anthropic/v1';
 
-  final String baseUrl;
+/// 对话语言模型（写死，非配置项）。
+const kLlmModel = 'mimo-v2.6-flash';
+
+/// LLM 接入配置：只有 API Key 是用户手动填的。
+///
+/// 端点与模型写死在 [kLlmBaseUrl] / [kLlmModel]（MiMo，Anthropic Messages 协议）。
+class LlmConfig {
+  const LlmConfig({required this.apiKey});
+
   final String apiKey;
-  final String model;
 
   /// Messages API 协议版本头。
   static const anthropicVersion = '2023-06-01';
 
-  bool get isConfigured => baseUrl.trim().isNotEmpty && apiKey.trim().isNotEmpty;
+  bool get isConfigured => apiKey.trim().isNotEmpty;
 
   /// Messages 端点：`…/v1/messages`。
-  Uri messagesUri() {
-    final root = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
-    final base = root.endsWith('/v1') ? root : '$root/v1';
-    return Uri.parse('$base/messages');
-  }
+  Uri messagesUri() => Uri.parse('$kLlmBaseUrl/messages');
 
   Map<String, String> get headers => {
         'Content-Type': 'application/json',
@@ -33,7 +28,7 @@ class LlmConfig {
         'anthropic-version': anthropicVersion,
       };
 
-  static const empty = LlmConfig(baseUrl: '', apiKey: '', model: '');
+  static const empty = LlmConfig(apiKey: '');
 }
 
 /// 供应商适配层接口：把框架内的消息 / 工具翻译成具体 API 形状。
