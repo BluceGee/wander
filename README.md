@@ -11,6 +11,7 @@
 | 🏠 全部功能 | 功能入口 + 本月收支、备忘录数量速览（右上角菜单进入） |
 | 📝 备忘录 | 新建 / 编辑 / 删除 / 置顶，长按删除 |
 | 💰 记账 | 支出 / 收入录入，分类统计，按月查看流水，左滑删除 |
+| ⏰ 闹钟 | 铃声、重复、关闭挑战（点/按/算题/打字/摇一摇）、贪睡全自定义；杀进程也照响 |
 | 🎮 小游戏 | 井字棋（AI 对手，极小化极大算法）、猜数字 |
 | ⚙️ 设置 | 账号、浅色 / 深色 / 跟随系统，LLM 接口配置，清空数据 |
 
@@ -131,8 +132,9 @@ lib/
 ├── app.dart                  # MaterialApp / 主题
 ├── core/
 │   ├── agent/                # AI agent 框架（LLM 适配层 + 工具循环）
+│   ├── alarm/                # 闹钟调度（AlarmScheduler 封装 + 收尾/贪睡记账）
 │   ├── network/              # 账号 ApiClient、证书固定、服务器地址配置
-│   ├── models/               # Memo、ExpenseRecord、账号数据模型
+│   ├── models/               # Memo、ExpenseRecord、AlarmRecord、账号数据模型
 │   ├── storage/              # 全局状态 + JSON 持久化；KeyVault（API Key 加密存储）
 │   ├── theme/                # Material 3 主题
 │   └── utils/                # 日期/金额格式化、口语日期归一
@@ -140,6 +142,7 @@ lib/
     ├── auth/                 # 登录 / 注册（可跳过）
     ├── home/                 # 全部功能（工具页）
     ├── assistant/            # 对话主页（豆包式 UI + 内置工具）
+    ├── alarm/                # 闹钟列表 / 编辑 / 全屏响铃页 / 铃声选择
     ├── memo/                 # 备忘录
     ├── expense/              # 记账
     ├── games/                # 游戏大厅、井字棋、猜数字
@@ -151,6 +154,8 @@ lib/
 - 状态管理：`ChangeNotifier` + `ListenableBuilder`（无第三方状态库）
 - 本地存储：`shared_preferences` + JSON，纯本机、不联网
 - 密钥存储：`flutter_secure_storage`（Android Keystore 加密）
+- 闹钟：`alarm` 包（原生 AlarmManager 精确调度 + 前台服务循环放音），
+  自研铃声桥（系统铃声/本地音乐拷入私有目录）与权限/国产 ROM 引导
 - UI：Material 3，支持深色模式
 
 ## 后续路线（调研结论，未纳入当前版本）

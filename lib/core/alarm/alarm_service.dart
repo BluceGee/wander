@@ -36,7 +36,9 @@ class AlarmService {
   /// 补响留出的调度余量（AlarmManager 不接受“此刻”触发）。
   static const _catchUpDelay = Duration(seconds: 2);
 
-  final _ringController = StreamController<AlarmRecord>.broadcast();
+  /// 同步广播：响铃事件即达响铃页，不依赖微任务队列
+  ///（跨 zone 分发时异步广播可能把事件排到永远洗不到的队列里）。
+  final _ringController = StreamController<AlarmRecord>.broadcast(sync: true);
   StreamSubscription<AlarmFiredEvent>? _firedSub;
   StreamSubscription<Set<int>>? _ringingSub;
 
@@ -48,6 +50,16 @@ class AlarmService {
 
   /// 响铃流：闹钟到点时推送对应记录（响铃页据此弹出）。
   Stream<AlarmRecord> get onRing => _ringController.stream;
+
+  /// 当前正在响铃的记录（全屏意图拉起 / 启动时补弹响铃页用）。
+  List<AlarmRecord> get ringingRecords {
+    final result = <AlarmRecord>[];
+    for (final sid in _ringing) {
+      final record = _recordByScheduleId(sid);
+      if (record != null) result.add(record);
+    }
+    return result;
+  }
 
   /// 启动：接管响铃事件并补调度。幂等，可重复调用（如恢复前台时）。
   Future<void> start() async {
