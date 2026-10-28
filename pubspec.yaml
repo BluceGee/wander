@@ -2,7 +2,7 @@ name: xnl
 description: "XNL 工具箱 —— 备忘录、记账、闹钟、小游戏合集"
 publish_to: 'none'
 
-version: 1.5.0+6
+version: 1.5.1+7
 
 environment:
   sdk: ^3.13.7

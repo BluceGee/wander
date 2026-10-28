@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/agent/llm_types.dart';
 import '../../core/alarm/alarm_service.dart';
 import '../../core/storage/app_store.dart';
-import '../../core/voice/tts_player.dart';
+import '../../core/voice/streaming_tts.dart';
 import '../../core/voice/voice_api.dart';
 import '../../core/voice/voice_recorder.dart';
 import '../home/home_page.dart';
@@ -26,7 +26,15 @@ class _AssistantPageState extends State<AssistantPage> {
   final _inputCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   final _recorder = VoiceRecorder();
-  final _tts = TtsPlayer();
+
+  /// 流式跟读：文字一边生成一边切句朗读，不再等整段回复完再播。
+  late final StreamingTtsQueue _speech =
+      StreamingTtsQueue(apiKeyOf: () => widget.app.llmConfig.apiKey);
+
+  /// 已喂给跟读队列的流式文字长度（算增量用）。
+  String _fedSoFar = '';
+  bool _wasStreaming = false;
+
   bool _recording = false;
   bool _transcribing = false;
 
@@ -35,6 +43,34 @@ class _AssistantPageState extends State<AssistantPage> {
     super.initState();
     _store = AssistantStore(widget.app, widget.alarms);
     _store.confirmTool = _confirmToolCall;
+    _store.addListener(_onStoreChanged);
+  }
+
+  /// 跟读驱动：流式文字每增长一段就切句播报，定稿时把尾巴读完。
+  void _onStoreChanged() {
+    if (!mounted || !widget.app.voiceReplyEnabled) return;
+    final streaming = _store.streamingText;
+    if (streaming != null) {
+      // 工具循环里每轮回复都会重新流式：上一轮已 flush 游标清零，
+      // 这里只喂新增部分
+      final delta = streaming.startsWith(_fedSoFar)
+          ? streaming.substring(_fedSoFar.length)
+          : streaming;
+      _fedSoFar = streaming;
+      if (delta.isNotEmpty) _speech.feed(delta);
+      _wasStreaming = true;
+    } else if (_wasStreaming) {
+      _wasStreaming = false;
+      _fedSoFar = '';
+      _speech.flush();
+    }
+  }
+
+  /// 新一轮提问前闭掉上一轮还在读的语音。
+  Future<void> _stopSpeech() async {
+    _fedSoFar = '';
+    _wasStreaming = false;
+    await _speech.stop();
   }
 
   /// 写操作二次确认：列出工具与参数，用户点了确认才真正执行。
@@ -65,7 +101,8 @@ class _AssistantPageState extends State<AssistantPage> {
   @override
   void dispose() {
     _recorder.dispose();
-    _tts.dispose();
+    _speech.dispose();
+    _store.removeListener(_onStoreChanged);
     _store.dispose();
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
@@ -86,16 +123,16 @@ class _AssistantPageState extends State<AssistantPage> {
   Future<void> _send() async {
     final text = _inputCtrl.text;
     _inputCtrl.clear();
+    await _stopSpeech();
     await _store.send(text);
     _scrollToBottom();
-    await _maybeSpeak();
   }
 
   /// 快捷指令：直接发送（豆包式一点即发）。
   Future<void> _sendPreset(String text) async {
+    await _stopSpeech();
     await _store.send(text);
     _scrollToBottom();
-    await _maybeSpeak();
   }
 
   /// 语音输入：点一下开始录音，再点一下停止并识别，识别结果直接发送。
@@ -116,9 +153,9 @@ class _AssistantPageState extends State<AssistantPage> {
           );
           return;
         }
+        await _stopSpeech();
         await _store.send(text);
         _scrollToBottom();
-        await _maybeSpeak();
       } on VoiceApiException catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -143,7 +180,7 @@ class _AssistantPageState extends State<AssistantPage> {
       );
       return;
     }
-    await _tts.stop();
+    await _speech.stop();
     if (!await _recorder.ensurePermission()) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -160,27 +197,7 @@ class _AssistantPageState extends State<AssistantPage> {
   Future<void> _toggleVoiceReply() async {
     final next = !widget.app.voiceReplyEnabled;
     await widget.app.setVoiceReplyEnabled(next);
-    if (!next) await _tts.stop();
-  }
-
-  /// 回复完成后播报最后一条助手文本（开关开着才播）。
-  Future<void> _maybeSpeak() async {
-    if (!widget.app.voiceReplyEnabled) return;
-    final apiKey = widget.app.llmConfig.apiKey;
-    if (apiKey.isEmpty) return;
-    final msgs = _store.messages;
-    for (var i = msgs.length - 1; i >= 0; i--) {
-      final m = msgs[i];
-      if (m.role == ChatRole.assistant && m.content.trim().isNotEmpty) {
-        try {
-          final wav = await TtsClient(apiKey: apiKey).synthesize(m.content);
-          await _tts.play(wav);
-        } on Exception {
-          // 播报失败不打扰对话，静默忽略
-        }
-        return;
-      }
-    }
+    if (!next) await _stopSpeech();
   }
 
   @override
