@@ -39,8 +39,8 @@ Future<void> main() async {
     debugPrint('闹钟内核启动失败（界面照常进入）: $e\n$st');
   }
 
-  // release 下默认 ErrorWidget 是一块白板，异常无从得见；
-  // 这里把异常直接画出来，白屏问题一眼可诊断。
+  // release 下默认 ErrorWidget 只是一块灰底，异常无从得见；
+  // 这里把异常直接画出来，渲染崩溃一眼可诊断。
   ErrorWidget.builder = (details) {
     final text = '${details.exception}';
     return MaterialApp(

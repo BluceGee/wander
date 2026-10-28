@@ -219,17 +219,18 @@ class AlarmRecord {
 
   /// 映射到 alarm 包的 int id。
   ///
-  /// id 是微秒时间戳字符串，可直接解析；解析失败退化为确定性 FNV-1a
+  /// 必须落在 32 位有符号正数范围内：alarm 包对超界的 id 直接抛
+  /// AlarmException（启动补调度时抛出会挡住 runApp，表现为纯白屏卡死）。
+  /// 微秒 id（≈1.8e15）不能直接解析使用——既超上限，简单掩码又会约
+  /// 35.8 分钟一撞；因此统一走确定性 FNV-1a 哈希掩到 31 位
   /// （跨运行稳定，不能用 String.hashCode）。
   int get scheduleId {
-    final parsed = int.tryParse(id);
-    if (parsed != null) return parsed;
     var hash = 0x811c9dc5;
     for (final unit in id.codeUnits) {
       hash ^= unit;
       hash = (hash * 0x01000193) & 0x7fffffff;
     }
-    return hash;
+    return hash == 0 ? 1 : hash; // 0 / -1 是 alarm 包的非法 id
   }
 
   /// 下一次响铃时刻（严格晚于 [after]，默认现在）；不会响则返回 null。

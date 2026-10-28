@@ -128,9 +128,12 @@ void main() {
   });
 
   group('AlarmRecord.scheduleId', () {
-    test('数字 id 直接解析', () {
+    test('微秒 id 也必须落在 alarm 包允许的 Int 范围内', () {
+      // 回归防护：直接解析微秒 id（≈1.8e15）会让 Alarm.set 抛
+      // AlarmException，启动补调度时挡住 runApp → 纯白屏卡死。
       final record = AlarmRecord.create(hour: 7, minute: 0);
-      expect(record.scheduleId, int.parse(record.id));
+      expect(record.scheduleId, inInclusiveRange(1, 2147483647));
+      expect(record.scheduleId, isNot(int.parse(record.id)));
     });
 
     test('同一微秒连续 create 也唯一（防覆盖）', () {
@@ -140,7 +143,7 @@ void main() {
       expect(ids, hasLength(50));
     });
 
-    test('非数字 id 稳定映射（不用 hashCode）', () {
+    test('稳定映射且不同 id 不同（不用 hashCode）', () {
       AlarmRecord withId(String id) => AlarmRecord(
             id: id,
             hour: 7,
@@ -149,6 +152,8 @@ void main() {
           );
       expect(withId('abc').scheduleId, withId('abc').scheduleId);
       expect(withId('abc').scheduleId, isNot(withId('abd').scheduleId));
+      expect(withId('1761600000000000').scheduleId,
+          inInclusiveRange(1, 2147483647));
     });
   });
 
