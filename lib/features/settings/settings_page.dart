@@ -125,7 +125,7 @@ class SettingsPage extends StatelessWidget {
                     ListTile(
                       leading: Icon(Icons.info_outline),
                       title: Text('XNL 工具箱'),
-                      subtitle: Text('版本 1.4.0'),
+                      subtitle: Text('版本 1.5.0'),
                     ),
                     ListTile(
                       leading: Icon(Icons.flutter_dash),

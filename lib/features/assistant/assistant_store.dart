@@ -21,6 +21,7 @@ class AssistantStore extends ChangeNotifier {
 
   bool _busy = false;
   String? _error;
+  String? _streamingText;
 
   /// 写操作确认回调，由界面注入（弹对话框）。不设置则放行。
   Future<bool> Function(ToolCall call)? confirmTool;
@@ -31,6 +32,9 @@ class AssistantStore extends ChangeNotifier {
   bool get busy => _busy;
 
   String? get error => _error;
+
+  /// 正在流式生成中的助手文本（尚未定稿）；空闲时为 null。
+  String? get streamingText => _streamingText;
 
   bool get isConfigured => _app.llmConfig.isConfigured;
 
@@ -87,16 +91,25 @@ class AssistantStore extends ChangeNotifier {
       await service.run(
         history: _messages,
         onMessage: (m) {
+          // 助手消息定稿时清掉流式草稿，避免与正式气泡重复显示
+          if (m.role == ChatRole.assistant) _streamingText = null;
           // 工具调用与结果逐条刷新 UI，让用户看见助手在干什么
+          notifyListeners();
+        },
+        onText: (delta) {
+          _streamingText = (_streamingText ?? '') + delta;
           notifyListeners();
         },
       );
     } on LlmException catch (e) {
       _error = e.toString();
+      _streamingText = null;
     } on Exception catch (e) {
       _error = '调用失败：$e';
+      _streamingText = null;
     } finally {
       _busy = false;
+      _streamingText = null;
       notifyListeners();
     }
   }
@@ -104,6 +117,7 @@ class AssistantStore extends ChangeNotifier {
   void clear() {
     _messages.clear();
     _error = null;
+    _streamingText = null;
     notifyListeners();
   }
 }

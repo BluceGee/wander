@@ -30,9 +30,14 @@ class FakeLlm implements LlmClient {
   Future<LlmResponse> complete({
     required List<ChatMessage> messages,
     List<ToolSpec> tools = const [],
+    void Function(String textDelta)? onText,
   }) async {
     requestHistories.add([...messages]);
-    return responses[_call++];
+    final response = responses[_call++];
+    if (onText != null && response.text.isNotEmpty) {
+      onText(response.text);
+    }
+    return response;
   }
 }
 
@@ -292,6 +297,80 @@ void main() {
         throwsA(isA<LlmException>()
             .having((e) => e.statusCode, 'statusCode', 429)),
       );
+    });
+
+    test('流式：SSE 文本增量实时回调，tool_use 参数分片拼装', () async {
+      final sse = [
+        'event: message_start',
+        'data: {"type":"message_start","message":{"id":"msg_1"}}',
+        '',
+        'event: content_block_start',
+        'data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}',
+        '',
+        'event: content_block_delta',
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"内部思考"}}',
+        '',
+        'event: content_block_stop',
+        'data: {"type":"content_block_stop","index":0}',
+        '',
+        'event: content_block_start',
+        'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}',
+        '',
+        'event: content_block_delta',
+        'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"你好"}}',
+        '',
+        'event: content_block_delta',
+        'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"！"}}',
+        '',
+        'event: content_block_stop',
+        'data: {"type":"content_block_stop","index":1}',
+        '',
+        'event: content_block_start',
+        'data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"call_7","name":"list_memos","input":{}}}',
+        '',
+        'event: content_block_delta',
+        'data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\\"query\\": "}}',
+        '',
+        'event: content_block_delta',
+        'data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"\\"买菜\\"}"}}',
+        '',
+        'event: content_block_stop',
+        'data: {"type":"content_block_stop","index":2}',
+        '',
+        'event: message_delta',
+        'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}',
+        '',
+        'event: message_stop',
+        'data: {"type":"message_stop"}',
+        '',
+      ].join('\n');
+
+      final mockClient = MockClient((request) async {
+        final body =
+            jsonDecode(utf8.decode(request.bodyBytes)) as Map<String, dynamic>;
+        expect(body['stream'], isTrue); // 走流式分支才带 stream
+        return http.Response.bytes(
+          utf8.encode(sse),
+          200,
+          headers: {'content-type': 'text/event-stream'},
+        );
+      });
+
+      final deltas = <String>[];
+      final client = AnthropicMessagesClient(
+        config: const LlmConfig(apiKey: 'k'),
+        httpClient: mockClient,
+      );
+      final response = await client.complete(
+        messages: [ChatMessage.user('查一下买菜的备忘录')],
+        onText: deltas.add,
+      );
+
+      expect(deltas, ['你好', '！']);
+      expect(response.text, '你好！');
+      expect(response.toolCalls.single.name, 'list_memos');
+      expect(response.toolCalls.single.arguments['query'], '买菜');
+      expect(response.finishReason, 'tool_use');
     });
   });
 

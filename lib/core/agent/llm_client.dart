@@ -38,9 +38,11 @@ class LlmConfig {
 abstract class LlmClient {
   /// 完成一轮对话：带上 [messages] 与可用 [tools]，返回模型响应。
   ///
-  /// 非流式实现即可满足 agent 循环；流式可在实现内部消化。
+  /// [onText] 非空时做流式输出：模型每产生一段文本就回调一次增量，
+  /// 适合把回复实时打到界面上；返回值仍是完整响应。不传则走普通请求。
   Future<LlmResponse> complete({
     required List<ChatMessage> messages,
     List<ToolSpec> tools = const [],
+    void Function(String textDelta)? onText,
   });
 }

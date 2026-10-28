@@ -26,6 +26,14 @@ class AppTheme {
         color: scheme.surfaceContainerLow,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
+      chipTheme: ChipThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.8)),
+        backgroundColor: scheme.surfaceContainerLow,
+      ),
+      dialogTheme: DialogThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         border: OutlineInputBorder(

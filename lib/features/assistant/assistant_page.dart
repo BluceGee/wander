@@ -10,7 +10,7 @@ import '../home/home_page.dart';
 import '../settings/llm_settings_page.dart';
 import 'assistant_store.dart';
 
-/// AI 助手对话页 —— APP 的主页面（豆包式：打开即对话）。
+/// AI 助手对话页 —— APP 的主页面（豆包式：打开即对话，支持语音与流式输出）。
 class AssistantPage extends StatefulWidget {
   const AssistantPage({super.key, required this.app, required this.alarms});
 
@@ -190,14 +190,23 @@ class _AssistantPageState extends State<AssistantPage> {
       builder: (context, _) {
         if (_store.messages.isNotEmpty || _store.busy) _scrollToBottom();
 
+        final streaming = _store.streamingText;
         return Scaffold(
+          backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
           appBar: AppBar(
-            title: const Text('XNL 助手'),
+            titleSpacing: 16,
+            title: const Row(
+              children: [
+                _AssistantAvatar(size: 32),
+                SizedBox(width: 10),
+                Text('XNL 助手'),
+              ],
+            ),
             actions: [
               IconButton(
                 icon: Icon(widget.app.voiceReplyEnabled
-                    ? Icons.volume_up
-                    : Icons.volume_off),
+                    ? Icons.volume_up_rounded
+                    : Icons.volume_off_rounded),
                 tooltip: widget.app.voiceReplyEnabled ? '语音播报：开' : '语音播报：关',
                 onPressed: _toggleVoiceReply,
               ),
@@ -233,7 +242,7 @@ class _AssistantPageState extends State<AssistantPage> {
                 onDismiss: () => _store.clear(),
               ),
               Expanded(
-                child: _store.messages.isEmpty
+                child: _store.messages.isEmpty && streaming == null
                     ? _EmptyHint(
                         username: widget.app.isLoggedIn
                             ? widget.app.authUsername
@@ -242,13 +251,21 @@ class _AssistantPageState extends State<AssistantPage> {
                       )
                     : ListView.builder(
                         controller: _scrollCtrl,
-                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                        itemCount: _store.messages.length,
-                        itemBuilder: (context, i) =>
-                            _MessageView(message: _store.messages[i]),
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        itemCount: _store.messages.length +
+                            ((streaming != null || _store.busy) ? 1 : 0),
+                        itemBuilder: (context, i) {
+                          if (i < _store.messages.length) {
+                            return _MessageView(message: _store.messages[i]);
+                          }
+                          // 末尾：流式草稿气泡 / 打字中指示
+                          return _StreamingView(
+                            text: streaming,
+                            typing: streaming == null,
+                          );
+                        },
                       ),
               ),
-              if (_store.busy) const LinearProgressIndicator(minHeight: 2),
               _InputBar(
                 controller: _inputCtrl,
                 enabled: !_store.busy,
@@ -265,6 +282,42 @@ class _AssistantPageState extends State<AssistantPage> {
   }
 }
 
+/// 助手头像：渐变圆底 + 星光图标。
+class _AssistantAvatar extends StatelessWidget {
+  const _AssistantAvatar({this.size = 30});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [scheme.primary, scheme.tertiary],
+        ),
+        borderRadius: BorderRadius.circular(size / 2),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.primary.withValues(alpha: 0.25),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Icon(
+        Icons.auto_awesome_rounded,
+        size: size * 0.55,
+        color: scheme.onPrimary,
+      ),
+    );
+  }
+}
+
 class _MessageView extends StatelessWidget {
   const _MessageView({required this.message});
 
@@ -274,54 +327,212 @@ class _MessageView extends StatelessWidget {
   Widget build(BuildContext context) {
     switch (message.role) {
       case ChatRole.user:
-        return _Bubble(
-          text: message.content,
-          align: Alignment.centerRight,
-          color: Theme.of(context).colorScheme.primaryContainer,
+        return _Row(
+          isUser: true,
+          children: [
+            _Bubble(
+              text: message.content,
+              isUser: true,
+            ),
+          ],
         );
       case ChatRole.assistant:
-        if (message.toolCalls.isNotEmpty) {
-          return _ToolCallChip(calls: message.toolCalls);
-        }
-        return _Bubble(
-          text: message.content,
-          align: Alignment.centerLeft,
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        return _Row(
+          children: [
+            if (message.content.isNotEmpty) ...[
+              _Bubble(text: message.content, isUser: false),
+            ],
+            if (message.toolCalls.isNotEmpty) ...[
+              if (message.content.isNotEmpty) const SizedBox(height: 6),
+              _ToolCallChip(calls: message.toolCalls),
+            ],
+          ],
         );
       case ChatRole.tool:
-        return _ToolResultChip(message: message);
+        return Padding(
+          padding: const EdgeInsets.only(left: 38, top: 2, bottom: 2),
+          child: _ToolResultChip(message: message),
+        );
       case ChatRole.system:
         return const SizedBox.shrink();
     }
   }
 }
 
-class _Bubble extends StatelessWidget {
-  const _Bubble({
-    required this.text,
-    required this.align,
-    required this.color,
-  });
+/// 消息行：助手带头像靠左，用户靠右。
+class _Row extends StatelessWidget {
+  const _Row({required this.children, this.isUser = false});
 
-  final String text;
-  final Alignment align;
-  final Color color;
+  final List<Widget> children;
+  final bool isUser;
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: align,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+    final row = Column(
+      crossAxisAlignment:
+          isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: children,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment:
+            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          if (!isUser) ...[
+            const _AssistantAvatar(),
+            const SizedBox(width: 8),
+          ],
+          Flexible(child: row),
+        ],
+      ),
+    );
+  }
+}
+
+/// 对话气泡：用户主色实心，助手浅底描边。
+class _Bubble extends StatelessWidget {
+  const _Bubble({required this.text, required this.isUser});
+
+  final String text;
+  final bool isUser;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width * 0.72,
+      ),
+      decoration: BoxDecoration(
+        gradient: isUser
+            ? LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [scheme.primary, scheme.primary.withValues(alpha: 0.82)],
+              )
+            : null,
+        color: isUser ? null : scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(20),
+          topRight: const Radius.circular(20),
+          bottomLeft: Radius.circular(isUser ? 20 : 6),
+          bottomRight: Radius.circular(isUser ? 6 : 20),
         ),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(16),
+        border: isUser
+            ? null
+            : Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: (isUser ? scheme.primary : scheme.shadow)
+                .withValues(alpha: isUser ? 0.18 : 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Text(
+        text,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: isUser ? scheme.onPrimary : scheme.onSurface,
+              height: 1.45,
+            ),
+      ),
+    );
+  }
+}
+
+/// 流式输出气泡：文本随打随出，尾部光标闪烁；还没有文本时显示打字动画。
+class _StreamingView extends StatelessWidget {
+  const _StreamingView({required this.text, required this.typing});
+
+  final String? text;
+  final bool typing;
+
+  @override
+  Widget build(BuildContext context) {
+    if (typing) {
+      return const _Row(children: [_TypingDots()]);
+    }
+    return _Row(
+      children: [
+        _Bubble(
+          text: text!,
+          isUser: false,
         ),
-        child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
+      ],
+    );
+  }
+}
+
+/// 打字中三点动画（仅忙碌时出现，闲时不占帧）。
+class _TypingDots extends StatefulWidget {
+  const _TypingDots();
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+          bottomLeft: Radius.circular(6),
+          bottomRight: Radius.circular(20),
+        ),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
+      ),
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (context, _) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < 3; i++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Opacity(
+                    opacity: 0.35 +
+                        0.65 *
+                            ((1 -
+                                    (((_ctrl.value + i * 0.2) % 1.0) - 0.5)
+                                        .abs() *
+                                        2)
+                                .clamp(0.0, 1.0)),
+                    child: Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: scheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -335,21 +546,35 @@ class _ToolCallChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          for (final c in calls)
-            Chip(
-              avatar: Icon(Icons.build_circle_outlined,
-                  size: 18, color: scheme.primary),
-              label: Text('调用 ${c.name}'),
-              visualDensity: VisualDensity.compact,
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final c in calls)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: scheme.secondaryContainer.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                  color: scheme.secondary.withValues(alpha: 0.25)),
             ),
-        ],
-      ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.build_circle_outlined,
+                    size: 16, color: scheme.secondary),
+                const SizedBox(width: 6),
+                Text(
+                  '调用 ${c.name}',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: scheme.onSecondaryContainer,
+                      ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
@@ -366,29 +591,26 @@ class _ToolResultChip extends StatelessWidget {
         ? '${message.content.substring(0, 120)}…'
         : message.content;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Icon(
-            message.isError ? Icons.error_outline : Icons.check_circle_outline,
-            size: 16,
-            color: message.isError ? scheme.error : scheme.outline,
+    return Row(
+      children: [
+        Icon(
+          message.isError ? Icons.error_outline : Icons.check_circle_outline,
+          size: 15,
+          color: message.isError ? scheme.error : scheme.outline,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: scheme.outline),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              text,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: scheme.outline),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -416,47 +638,137 @@ class _InputBar extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return SafeArea(
       child: Padding(
-        padding: EdgeInsets.fromLTRB(12, 8, 12, 12 + bottom),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: controller,
-                enabled: enabled,
-                minLines: 1,
-                maxLines: 4,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => onSend(),
-                decoration: InputDecoration(
-                  hintText: recording
-                      ? '正在录音，点一下麦克风结束'
-                      : (transcribing ? '正在识别…' : '比如：记一笔午饭 25 元'),
+        padding: EdgeInsets.fromLTRB(12, 6, 12, 10 + bottom),
+        child: Container(
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(28),
+            border:
+                Border.all(color: scheme.outlineVariant.withValues(alpha: 0.8)),
+            boxShadow: [
+              BoxShadow(
+                color: scheme.shadow.withValues(alpha: 0.06),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.fromLTRB(18, 4, 6, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  enabled: enabled,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => onSend(),
+                  decoration: InputDecoration(
+                    hintText: recording
+                        ? '正在录音，点一下麦克风结束'
+                        : (transcribing ? '正在识别…' : '比如：记一笔午饭 25 元'),
+                    border: InputBorder.none,
+                    filled: false,
+                    isDense: true,
+                    hintStyle: TextStyle(color: scheme.outline),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              onPressed: enabled ? onMic : null,
-              tooltip: recording ? '结束并识别' : '语音输入',
-              style: recording
-                  ? IconButton.styleFrom(backgroundColor: scheme.errorContainer)
-                  : null,
-              icon: transcribing
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(recording ? Icons.stop : Icons.mic_none),
-            ),
-            const SizedBox(width: 4),
-            IconButton.filled(
-              onPressed: enabled ? onSend : null,
-              icon: const Icon(Icons.send),
-            ),
-          ],
+              _MicButton(
+                recording: recording,
+                transcribing: transcribing,
+                enabled: enabled,
+                onTap: onMic,
+              ),
+              const SizedBox(width: 6),
+              IconButton.filled(
+                onPressed: enabled ? onSend : null,
+                style: IconButton.styleFrom(
+                  shape: const CircleBorder(),
+                  padding: const EdgeInsets.all(10),
+                ),
+                icon: const Icon(Icons.send_rounded, size: 20),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// 麦克风按钮：录音中变红色停止钮并轻微呼吸动画。
+class _MicButton extends StatelessWidget {
+  const _MicButton({
+    required this.recording,
+    required this.transcribing,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final bool recording;
+  final bool transcribing;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final icon = transcribing
+        ? const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        : Icon(
+            recording ? Icons.stop_rounded : Icons.mic_none_rounded,
+            size: 22,
+            color: recording ? scheme.onErrorContainer : scheme.onSurfaceVariant,
+          );
+    return IconButton(
+      onPressed: enabled ? onTap : null,
+      tooltip: recording ? '结束并识别' : '语音输入',
+      style: IconButton.styleFrom(
+        backgroundColor:
+            recording ? scheme.errorContainer : Colors.transparent,
+        shape: const CircleBorder(),
+      ),
+      icon: recording ? _Pulsing(child: icon) : icon,
+    );
+  }
+}
+
+/// 录音时的呼吸缩放动画。
+class _Pulsing extends StatefulWidget {
+  const _Pulsing({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_Pulsing> createState() => _PulsingState();
+}
+
+class _PulsingState extends State<_Pulsing>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: Tween(begin: 1.0, end: 1.12).animate(
+        CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+      ),
+      child: widget.child,
     );
   }
 }
@@ -532,50 +844,47 @@ class _EmptyHint extends StatelessWidget {
   final ValueChanged<String> onPreset;
 
   static const _presets = [
-    '记一笔午饭 25 元',
-    '这个月花了多少',
-    '写条明天开会的备忘录',
-    '查一下买菜的备忘录',
+    (Icons.receipt_long_rounded, '记一笔午饭 25 元'),
+    (Icons.pie_chart_rounded, '这个月花了多少'),
+    (Icons.edit_note_rounded, '写条明天开会的备忘录'),
+    (Icons.search_rounded, '查一下买菜的备忘录'),
   ];
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircleAvatar(
-              radius: 40,
-              backgroundColor:
-                  theme.colorScheme.primaryContainer,
-              child: Icon(Icons.auto_awesome,
-                  size: 40, color: theme.colorScheme.onPrimaryContainer),
-            ),
-            const SizedBox(height: 16),
+            const _AssistantAvatar(size: 72),
+            const SizedBox(height: 18),
             Text(
               username == null ? '你好，我是 XNL 助手' : '你好，$username',
-              style: theme.textTheme.titleLarge
+              style: theme.textTheme.headlineSmall
                   ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             Text(
               '可以帮你记账、查账、管理备忘录\n试试下面的指令，或直接输入',
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: scheme.outline, height: 1.6),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 10,
+              runSpacing: 10,
               alignment: WrapAlignment.center,
               children: [
-                for (final p in _presets)
+                for (final (icon, label) in _presets)
                   ActionChip(
-                    label: Text(p),
-                    onPressed: () => onPreset(p),
+                    avatar: Icon(icon, size: 18, color: scheme.primary),
+                    label: Text(label),
+                    onPressed: () => onPreset(label),
                   ),
               ],
             ),

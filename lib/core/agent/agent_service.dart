@@ -34,10 +34,12 @@ class AgentService {
   /// 执行一轮 agent 对话。
   ///
   /// [history] 为完整会话历史（会被就地追加）；每产生一条新消息
-  /// 就回调 [onMessage] 一次。返回模型的最终文本回复。
+  /// 就回调 [onMessage] 一次；模型文本增量经 [onText] 实时吐出（流式）。
+  /// 返回模型的最终文本回复。
   Future<String> run({
     required List<ChatMessage> history,
     void Function(ChatMessage message)? onMessage,
+    void Function(String textDelta)? onText,
   }) async {
     var rounds = 0;
 
@@ -48,6 +50,7 @@ class AgentService {
           ...history,
         ],
         tools: registry.specs,
+        onText: onText,
       );
 
       if (!response.wantsTools) {
@@ -67,7 +70,11 @@ class AgentService {
         return notice.content;
       }
 
-      final toolCallMessage = ChatMessage.assistant(toolCalls: response.toolCalls);
+      // 工具调用前的说明文字与 tool_use 一起保留进历史
+      final toolCallMessage = ChatMessage.assistant(
+        content: response.text,
+        toolCalls: response.toolCalls,
+      );
       history.add(toolCallMessage);
       onMessage?.call(toolCallMessage);
 
